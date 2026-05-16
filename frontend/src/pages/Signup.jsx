@@ -3,6 +3,7 @@ import { auth } from "../firebaseConfig";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { apiPost } from "../services/apiClient";
 import { colors, font, radius, gradients } from "../theme";
 
 const Signup = () => {
@@ -45,21 +46,15 @@ const Signup = () => {
       await updateProfile(user, { displayName: name });
       await user.reload();
 
-      // Mirror the new user into the Neo4j graph.
-      const token = await user.getIdToken();
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ uid: user.uid, name, email })
-      });
-
-      if (!response.ok) {
-        // Firebase account exists; the graph node will be created lazily on
-        // first write. Don't block the user — log and continue.
-        console.error("Backend register failed:", response.status);
+      // Mirror the new user into the Neo4j graph. apiClient uses
+      // VITE_API_BASE_URL (the Render backend in prod) and attaches the
+      // freshly-minted ID token.
+      try {
+        await apiPost("/auth/register", { name, email });
+      } catch (regErr) {
+        // Firebase account exists; the graph node is created lazily on the
+        // first write too. Don't block the user — log and continue.
+        console.error("Backend register failed:", regErr.message);
       }
 
       navigate("/home");
