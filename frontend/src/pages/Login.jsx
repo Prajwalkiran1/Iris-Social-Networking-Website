@@ -3,6 +3,7 @@ import { auth } from "../firebaseConfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { colors, font, radius, gradients } from "../theme";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -40,9 +41,7 @@ const Login = () => {
     <div style={styles.container}>
       <div style={styles.leftPanel}>
         <div style={styles.branding}>
-          <h1 style={styles.logo}>
-            TruthSocial<em>.</em>
-          </h1>
+          <h1 style={styles.logo}>Iris</h1>
           <p style={styles.tagline}>connect through shared interests</p>
           <div style={styles.divider}></div>
           <p style={styles.quote}>
@@ -105,8 +104,8 @@ const styles = {
   container: {
     minHeight: "100vh",
     display: "flex",
-    backgroundColor: "#0a0a0a",
-    fontFamily: "'Jost', sans-serif"
+    backgroundColor: colors.bg,
+    fontFamily: font.family
   },
   leftPanel: {
     width: "55%",
@@ -115,13 +114,13 @@ const styles = {
     justifyContent: "center",
     position: "relative",
     background: `
-      radial-gradient(ellipse at 30% 50%, rgba(180, 150, 100, 0.15) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 20%, rgba(200, 170, 120, 0.08) 0%, transparent 50%),
-      #0d0c0b
+      radial-gradient(ellipse at 30% 50%, rgba(59,130,246,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.12) 0%, transparent 50%),
+      ${colors.bg}
     `,
     backgroundImage: `
-      linear-gradient(rgba(180,150,100,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(180,150,100,0.04) 1px, transparent 1px)
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
     `,
     backgroundSize: "60px 60px"
   },
@@ -130,18 +129,20 @@ const styles = {
     textAlign: "center"
   },
   logo: {
-    fontFamily: "'Cormorant Garamond', serif",
     fontSize: "96px",
-    fontWeight: "300",
-    color: "#e8dcc8",
+    fontWeight: 700,
     letterSpacing: "-2px",
     lineHeight: "1",
-    marginBottom: "24px"
+    marginBottom: "24px",
+    background: gradients.brand,
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    backgroundClip: "text"
   },
   tagline: {
     fontSize: "12px",
-    fontWeight: "200",
-    color: "rgba(232, 220, 200, 0.4)",
+    fontWeight: 400,
+    color: colors.textFaint,
     letterSpacing: "4px",
     textTransform: "uppercase",
     marginBottom: "60px"
@@ -149,15 +150,14 @@ const styles = {
   divider: {
     width: "40px",
     height: "1px",
-    background: "rgba(201, 169, 110, 0.4)",
+    background: colors.primaryAlt,
     margin: "0 auto 32px"
   },
   quote: {
-    fontFamily: "'Cormorant Garamond', serif",
     fontStyle: "italic",
     fontSize: "18px",
-    fontWeight: "300",
-    color: "rgba(232, 220, 200, 0.35)",
+    fontWeight: 300,
+    color: colors.textMuted,
     lineHeight: "1.7",
     maxWidth: "340px",
     margin: "0 auto"
@@ -167,7 +167,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f7f5f0"
+    backgroundColor: colors.surface
   },
   formContainer: {
     width: "80%",
@@ -175,20 +175,20 @@ const styles = {
   },
   title: {
     fontSize: "32px",
-    fontWeight: "400",
-    color: "#2c2c2c",
+    fontWeight: 600,
+    color: colors.text,
     marginBottom: "8px"
   },
   subtitle: {
     fontSize: "16px",
-    color: "#666",
+    color: colors.textFaint,
     marginBottom: "32px"
   },
   error: {
-    backgroundColor: "#fee",
-    color: "#c33",
+    backgroundColor: "rgba(239,68,68,0.12)",
+    color: colors.danger,
     padding: "12px",
-    borderRadius: "8px",
+    borderRadius: radius.md,
     marginBottom: "16px",
     fontSize: "14px"
   },
@@ -203,36 +203,36 @@ const styles = {
   input: {
     width: "100%",
     padding: "16px",
-    border: "1px solid #ddd",
-    borderRadius: "8px",
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
     fontSize: "16px",
-    backgroundColor: "#fff",
-    transition: "border-color 0.2s"
+    backgroundColor: colors.input,
+    color: colors.text,
+    fontFamily: font.family
   },
   button: {
     width: "100%",
     padding: "16px",
-    backgroundColor: "#2c2c2c",
+    background: gradients.brand,
     color: "#fff",
     border: "none",
-    borderRadius: "8px",
+    borderRadius: radius.md,
     fontSize: "16px",
-    fontWeight: "500",
+    fontWeight: 600,
     cursor: "pointer",
-    transition: "background-color 0.2s",
+    transition: "opacity 0.2s",
     marginTop: "8px"
   },
   switchPrompt: {
     textAlign: "center",
     marginTop: "24px",
     fontSize: "14px",
-    color: "#666"
+    color: colors.textFaint
   },
   link: {
-    color: "#2c2c2c",
-    fontWeight: "500",
-    cursor: "pointer",
-    textDecoration: "underline"
+    color: colors.primary,
+    fontWeight: 600,
+    cursor: "pointer"
   }
 };
 

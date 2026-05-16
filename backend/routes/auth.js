@@ -1,32 +1,28 @@
 const express = require("express");
 const router = express.Router();
-const driver = require("../neo4j");
+const driver = require("../config/neo4j");
 
 // POST /api/auth/register
 // Called after Firebase signup to save user in Neo4j
 router.post("/register", async (req, res) => {
-  const { uid, name, email } = req.body;
+  // uid/email come from the verified token, never the client body.
+  const uid = req.user.uid;
+  const email = req.user.email || req.body.email || "";
+  const name = req.body.name || req.user.name || "Anonymous";
 
-  const session = driver.session({ database: "irisdb" });
+  const session = driver.session();
   try {
-    console.log("[auth/register] attempt", { uid, email, name });
     const result = await session.run(
-      `CREATE (u:User {
-        uid: $uid,
-        name: $name,
-        email: $email,
-        bio: "",
-        interests: [],
-        createdAt: datetime()
-      })
-      RETURN u.uid AS uid`,
+      `MERGE (u:User {uid: $uid})
+       ON CREATE SET u.bio = "", u.interests = [], u.createdAt = datetime()
+       SET u.name = $name, u.email = $email
+       RETURN u.uid AS uid`,
       { uid, name, email }
     );
-    console.log("[auth/register] created user", result.records?.[0]?.get("uid"));
-    res.status(201).json({ message: "User created in Neo4j" });
+    res.status(201).json({ message: "User created in Neo4j", uid: result.records?.[0]?.get("uid") });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to create user" });
+    console.error("auth/register failed:", error.message);
+    res.status(503).json({ error: "Registration temporarily unavailable" });
   } finally {
     await session.close();
   }

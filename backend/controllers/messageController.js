@@ -1,11 +1,13 @@
 const driver = require("../config/neo4j");
 const { randomUUID } = require("crypto");
+const { toIsoString } = require("../utils/neoTime");
 
 exports.sendMessage = async (req, res) => {
-  const session = driver.session({ database: "irisdb" });
-  const { sender, receiver, text } = req.body;
+  const session = driver.session();
+  const sender = req.user.uid;
+  const { receiver, text } = req.body;
 
-  if (!sender || !receiver || !text) {
+  if (!receiver || !text || !text.trim()) {
     return res.status(400).json({ error: "Missing fields" });
   }
 
@@ -28,16 +30,16 @@ exports.sendMessage = async (req, res) => {
 
     res.status(201).json({ success: true });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to send message" });
+    console.error("sendMessage failed:", e.message);
+    res.status(503).json({ error: "Messaging temporarily unavailable" });
   } finally {
     await session.close();
   }
 };
 
 exports.getChat = async (req, res) => {
-  const session = driver.session({ database: "irisdb" });
-  const { me } = req.query;
+  const session = driver.session();
+  const me = req.user.uid;
   const friend = req.params.friendId;
 
   try {
@@ -56,37 +58,17 @@ exports.getChat = async (req, res) => {
       { me, friend }
     );
 
-    const messages = result.records.map(r => {
-      const timestamp = r.get("timestamp");
-      let isoTimestamp;
-      
-      if (timestamp && typeof timestamp === 'object') {
-        // Convert Neo4j DateTime to JavaScript Date
-        isoTimestamp = new Date(
-          timestamp.year.low,
-          timestamp.month.low - 1, // JavaScript months are 0-indexed
-          timestamp.day.low,
-          timestamp.hour.low,
-          timestamp.minute.low,
-          timestamp.second.low,
-          timestamp.nanosecond.low / 1000000
-        ).toISOString();
-      } else {
-        isoTimestamp = new Date().toISOString();
-      }
-      
-      return {
-        id: r.get("id") || `msg-${Date.now()}-${Math.random()}`,
-        text: r.get("text"),
-        timestamp: isoTimestamp,
-        sender: r.get("sender")
-      };
-    });
+    const messages = result.records.map(r => ({
+      id: r.get("id") || `msg-${Date.now()}-${Math.random()}`,
+      text: r.get("text"),
+      timestamp: toIsoString(r.get("timestamp")),
+      sender: r.get("sender")
+    }));
 
     res.json(messages);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to fetch chat" });
+    console.error("getChat failed:", e.message);
+    res.status(503).json({ error: "Messaging temporarily unavailable", messages: [] });
   } finally {
     await session.close();
   }
@@ -94,8 +76,8 @@ exports.getChat = async (req, res) => {
 
 // GET ALL CONVERSATIONS FOR A USER
 exports.getAllConversations = async (req, res) => {
-  const session = driver.session({ database: "irisdb" });
-  const { userId } = req.params;
+  const session = driver.session();
+  const userId = req.user.uid;
 
   try {
     // Get all conversations where the user is either sender or receiver
@@ -113,30 +95,17 @@ exports.getAllConversations = async (req, res) => {
       { userId }
     );
 
-    const conversations = result.records.map(record => {
-      const timestamp = record.get("timestamp");
-      const isoTimestamp = timestamp ? new Date(
-        timestamp.year.low,
-        timestamp.month.low - 1,
-        timestamp.day.low,
-        timestamp.hour.low,
-        timestamp.minute.low,
-        timestamp.second.low,
-        timestamp.nanosecond.low / 1000000
-      ).toISOString() : new Date().toISOString();
-
-      return {
-        uid: record.get("uid"),
-        name: record.get("name"),
-        lastMessage: record.get("lastMessage"),
-        timestamp: isoTimestamp
-      };
-    });
+    const conversations = result.records.map(record => ({
+      uid: record.get("uid"),
+      name: record.get("name"),
+      lastMessage: record.get("lastMessage"),
+      timestamp: toIsoString(record.get("timestamp"))
+    }));
 
     res.json(conversations);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to fetch conversations" });
+    console.error("getAllConversations failed:", e.message);
+    res.status(503).json({ error: "Messaging temporarily unavailable", conversations: [] });
   } finally {
     await session.close();
   }

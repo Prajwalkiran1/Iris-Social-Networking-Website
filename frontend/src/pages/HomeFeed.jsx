@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { getFeed } from "../services/feedApi";
+import { toggleLike } from "../services/postApi";
+import { apiGet } from "../services/apiClient";
 import PostCard from "../components/PostCard";
 import CreatePost from "../components/CreatePost";
 import SuggestedUsers from "../components/SuggestedUsers";
 import { useAuth } from "../contexts/AuthContext";
-import axios from "axios";
 
 const HomeFeed = () => {
   const [posts, setPosts] = useState([]);
@@ -18,31 +19,16 @@ const HomeFeed = () => {
     following: 0
   });
 
-  console.log("HomeFeed rendered, currentUser:", currentUser);
-
-  // Function to fetch follower counts
   const fetchFollowerCounts = async (userId) => {
     try {
-      const response = await fetch(`/api/follow/counts/${userId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Follower counts:", data);
-        setCurrentUserData(prev => ({
-          ...prev,
-          followers: data.followers,
-          following: data.following
-        }));
-      } else {
-        console.log("Failed to fetch follower counts");
-      }
+      const data = await apiGet(`/follow/counts/${userId}`);
+      setCurrentUserData(prev => ({
+        ...prev,
+        followers: data.followers,
+        following: data.following
+      }));
     } catch (error) {
-      console.error("Error fetching follower counts:", error);
+      console.error("Error fetching follower counts:", error.message);
     }
   };
 
@@ -51,7 +37,7 @@ const HomeFeed = () => {
       setLoading(true);
       try {
         // Load posts
-        const postsData = await getFeed(currentUser.uid);
+        const postsData = await getFeed();
         const safeData = postsData.map((post) => ({
           id: post.id,
           content: post.content || "",
@@ -67,37 +53,12 @@ const HomeFeed = () => {
         }));
         setPosts(safeData);
 
-        // Load suggested users
+        // Graph-native "people you may know" (2-hop FOLLOWS recommendations)
         try {
-          const response = await fetch("/api/search/users?q=a", {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            // Filter out current user and limit to 5 suggestions
-            const filtered = data
-              .filter(user => user.uid !== currentUser?.uid)
-              .slice(0, 5);
-            setSuggestedUsers(filtered);
-          } else {
-            console.log("Search API failed, using mock suggestions");
-            setSuggestedUsers([
-              { uid: "demo-1", name: "Alice", interests: ["music", "travel"] },
-              { uid: "demo-2", name: "Bob", interests: ["tech", "sports"] },
-              { uid: "demo-3", name: "Carol", interests: ["art", "photography"] }
-            ]);
-          }
-        } catch (searchError) {
-          console.log("Search API not available, using mock suggestions");
-          setSuggestedUsers([
-            { uid: "demo-1", name: "Alice", interests: ["music", "travel"] },
-            { uid: "demo-2", name: "Bob", interests: ["tech", "sports"] },
-            { uid: "demo-3", name: "Carol", interests: ["art", "photography"] }
-          ]);
+          const data = await apiGet("/recommendations/people");
+          setSuggestedUsers((Array.isArray(data) ? data : []).slice(0, 5));
+        } catch (recError) {
+          setSuggestedUsers([]);
         }
 
         // Fetch follower counts for current user
@@ -142,20 +103,40 @@ const HomeFeed = () => {
     );
   };
 
-  const handleLikeToggle = (postId) => {
+  const applyPost = (postId, patch) =>
     setPosts((prev) =>
       prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              isLiked: !post.isLiked,
-              likeCount: post.isLiked
-                ? post.likeCount - 1
-                : post.likeCount + 1
-            }
-          : post
+        post.id === postId ? { ...post, ...patch } : post
       )
     );
+
+  const handleLikeToggle = async (postId) => {
+    const target = posts.find((p) => p.id === postId);
+    if (!target || !currentUser?.uid) return;
+
+    // Optimistic update
+    applyPost(postId, {
+      isLiked: !target.isLiked,
+      likeCount: target.isLiked
+        ? Math.max(0, target.likeCount - 1)
+        : target.likeCount + 1
+    });
+
+    try {
+      const data = await toggleLike(postId);
+      // Reconcile with the authoritative server count
+      applyPost(postId, {
+        isLiked: data.isLiked,
+        likeCount: data.likeCount
+      });
+    } catch (err) {
+      console.error("Like failed, reverting:", err.message);
+      // Revert to the pre-click state
+      applyPost(postId, {
+        isLiked: target.isLiked,
+        likeCount: target.likeCount
+      });
+    }
   };
 
   const followingCount = posts.filter(
@@ -168,106 +149,6 @@ const HomeFeed = () => {
 
   return (
     <div style={styles.pageContainer}>
-      {/* Debug Info */}
-      <div style={{
-        position: "fixed",
-        top: "10px",
-        right: "10px",
-        background: "#333",
-        color: "#fff",
-        padding: "10px",
-        borderRadius: "5px",
-        fontSize: "12px",
-        zIndex: 9999
-      }}>
-        Debug: {currentUser ? `Logged in as ${currentUser.displayName}` : "Not logged in"}
-        <button 
-          onClick={() => window.location.reload()}
-          style={{
-            marginLeft: "10px",
-            padding: "2px 6px",
-            fontSize: "10px",
-            background: "#555",
-            color: "#fff",
-            border: "none",
-            borderRadius: "3px",
-            cursor: "pointer"
-          }}
-        >
-          Refresh
-        </button>
-        <button 
-          onClick={() => {
-            console.log("Current location:", window.location.href);
-            console.log("Frontend port:", window.location.port);
-            console.log("Testing basic connectivity...");
-            
-            // Test basic connectivity without CORS
-            fetch('http://localhost:5001/api/debug/neo4j', {
-              method: 'GET',
-              mode: 'no-cors' // Try without CORS first
-            }).then(response => {
-              console.log("Basic response:", response);
-              return response.text();
-            }).then(text => {
-              console.log("Basic response text:", text);
-              alert('Basic connectivity test: ' + text);
-            }).catch(error => {
-              console.error("Basic connectivity failed:", error);
-              alert('Basic connectivity FAILED: ' + error.message);
-            });
-          }}
-          style={{
-            marginLeft: "10px",
-            padding: "2px 6px",
-            fontSize: "10px",
-            background: "#888",
-            color: "#fff",
-            border: "none",
-            borderRadius: "3px",
-            cursor: "pointer"
-          }}
-        >
-          Basic Test
-        </button>
-        <button 
-          onClick={() => {
-            console.log("Current location:", window.location.href);
-            console.log("Frontend port:", window.location.port);
-            console.log("Testing with proxy...");
-            
-            // Test with proxy (relative URL)
-            fetch('/api/debug/neo4j', {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json'
-              }
-            }).then(response => {
-              console.log("Proxy response:", response);
-              return response.json();
-            }).then(data => {
-              console.log("Proxy data:", data);
-              alert('PROXY SUCCESS: ' + JSON.stringify(data));
-            }).catch(error => {
-              console.error("Proxy failed:", error);
-              alert('PROXY FAILED: ' + error.message);
-            });
-          }}
-          style={{
-            marginLeft: "10px",
-            padding: "2px 6px",
-            fontSize: "10px",
-            background: "#888",
-            color: "#fff",
-            border: "none",
-            borderRadius: "3px",
-            cursor: "pointer"
-          }}
-        >
-          Proxy Test
-        </button>
-      </div>
-      
       <div style={styles.contentWrapper}>
         {/* MAIN FEED */}
         <div style={styles.feed}>
@@ -322,25 +203,7 @@ const HomeFeed = () => {
             </div>
           </div>
 
-          <SuggestedUsers
-            users={suggestedUsers}
-            posts={posts}
-            onToggleFollow={(userId) => {
-              setPosts((prev) =>
-                prev.map((post) =>
-                  post.author.uid === userId
-                    ? {
-                        ...post,
-                        author: {
-                          ...post.author,
-                          isFollowing: !post.author.isFollowing
-                        }
-                      }
-                    : post
-                )
-              );
-            }}
-          />
+          <SuggestedUsers users={suggestedUsers} />
         </div>
       </div>
     </div>

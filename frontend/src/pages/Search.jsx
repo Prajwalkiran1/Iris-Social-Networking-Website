@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiGet } from '../services/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import FollowButton from '../components/FollowButton';
 
@@ -24,22 +24,11 @@ const Search = () => {
   const performSearch = async () => {
     setLoading(true);
     try {
-      const endpoint = searchType === 'users' ? '/api/search/users' : '/api/search/interests';
-      const response = await fetch(`${endpoint}?q=${encodeURIComponent(searchTerm)}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setResults(data);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      const endpoint = searchType === 'users' ? '/search/users' : '/search/interests';
+      const data = await apiGet(`${endpoint}?q=${encodeURIComponent(searchTerm)}`);
+      setResults(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Search error:', error);
+      console.error('Search error:', error.message);
       setResults([]);
     } finally {
       setLoading(false);

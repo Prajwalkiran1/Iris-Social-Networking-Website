@@ -1,24 +1,38 @@
 const express = require("express");
 require("dotenv").config();
 
+const db = require("./config/neo4j");
+
+const helmet = require("helmet");
+const verifyToken = require("./middleware/verifyToken");
+const { generalLimiter, writeLimiter } = require("./middleware/rateLimit");
+
 const authRoutes = require("./routes/auth");
 const profileRoutes = require("./routes/profile");
 const messageRoutes = require("./routes/messageRoutes");
 const searchRoutes = require("./routes/searchRoutes");
-
-// NEW routes from feed-follow
 const postRoutes = require("./routes/postRoutes");
 const followRoutes = require("./routes/followRoutes");
 const feedRoutes = require("./routes/feedRoutes");
+const recommendationRoutes = require("./routes/recommendationRoutes");
 
 const app = express();
 
 const cors = require("cors");
 
-// CORS: allow the React dev server (port 3000) to call this API
+// CORS: localhost for dev + the deployed frontend origin (FRONTEND_ORIGIN)
+// in production. Undefined entries are filtered out.
+const allowedOrigins = [
+  process.env.FRONTEND_ORIGIN,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
+    origin: allowedOrigins,
     credentials: false,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -27,59 +41,46 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(helmet());
+app.use(express.json({ limit: "1mb" }));
 
-// Existing routes
-app.use("/api/auth", authRoutes);
-app.use("/api/profile", profileRoutes);
-app.use("/api/messages", messageRoutes);
-app.use("/api/search", searchRoutes);
+// Broad rate limit on the whole API (runs before auth so floods are cheap).
+app.use("/api", generalLimiter);
 
-// Feed-follow routes
-app.use("/api/posts", postRoutes);
-app.use("/api/follow", followRoutes);
-app.use("/api/feed", feedRoutes);
+// Every data route requires a verified Firebase ID token. The actor's uid is
+// taken from the token (req.user.uid), never from the request body/params.
+// writeLimiter throttles the abuse-prone write endpoints more aggressively.
+app.use("/api/auth", verifyToken, authRoutes);
+app.use("/api/profile", verifyToken, profileRoutes);
+app.use("/api/messages", verifyToken, messageRoutes);
+app.use("/api/search", verifyToken, searchRoutes);
+app.use("/api/posts", writeLimiter, verifyToken, postRoutes);
+app.use("/api/follow", verifyToken, followRoutes);
+app.use("/api/feed", verifyToken, feedRoutes);
+app.use("/api/recommendations", verifyToken, recommendationRoutes);
 
-app.get("/api/debug/follows", async (req, res) => {
+// Health check — used by the frontend and by the deploy host's probe.
+app.get("/api/health", async (req, res) => {
+  let dbOk = false;
   try {
-    const session = require("./config/neo4j").session({ database: "irisdb" });
-    const result = await session.run("MATCH (a:User)-[r:FOLLOWS]->(b:User) RETURN a.uid, b.uid, r");
-    const follows = result.records.map(record => ({
-      follower: record.get("a.uid"),
-      following: record.get("b.uid"),
-      relationship: record.get("r")
-    }));
-    await session.close();
-    res.json({ follows });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    await db.verifyConnectivity();
+    dbOk = true;
+  } catch (e) {
+    dbOk = false;
   }
+  res.json({ ok: true, db: dbOk });
 });
 
 app.get("/", (req, res) => {
   res.send("Backend is running!");
 });
 
-app.get("/api/debug/neo4j", async (req, res) => {
-  try {
-    await require("./neo4j").verifyConnectivity();
-    const session = require("./neo4j").session({ database: "irisdb" });
-    try {
-      const result = await session.run(
-        "MATCH (u:User) RETURN count(u) AS users"
-      );
-      const users = result.records[0].get("users").toNumber?.() ?? result.records[0].get("users");
-      res.json({ ok: true, database: "irisdb", users });
-    } finally {
-      await session.close();
-    }
-  } catch (e) {
-    res.json({ ok: false, error: e.message, fallback: true });
-  }
-});
+// Listen only when run directly, so tests can import the app with supertest.
+if (require.main === module) {
+  const PORT = process.env.PORT || 5001;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-const PORT = process.env.PORT || 5001;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+module.exports = app;

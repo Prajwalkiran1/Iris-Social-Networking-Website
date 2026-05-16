@@ -2,8 +2,9 @@ const driver = require("../config/neo4j");
 
 // CHECK FOLLOW STATUS
 const checkFollowStatus = async (req, res) => {
-  const { followerUid, followingUid } = req.params;
-  const session = driver.session({ database: "irisdb" });
+  const followerUid = req.user.uid;
+  const { followingUid } = req.params;
+  const session = driver.session();
 
   try {
     const result = await session.run(
@@ -18,33 +19,8 @@ const checkFollowStatus = async (req, res) => {
     
     res.status(200).json({ isFollowing });
   } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
-  } finally {
-    await session.close();
-  }
-};
-
-// FOLLOW USER
-const followUser = async (req, res) => {
-  const { followerUid, followingUid } = req.body;
-  const session = driver.session({ database: "irisdb" });
-
-  try {
-    await session.run(
-      `
-      MATCH (a:User {uid:$followerUid}), (b:User {uid:$followingUid})
-      MERGE (a)-[:FOLLOWS]->(b)
-      `,
-      { followerUid, followingUid }
-    );
-
-    res.status(200).json({
-      message: "User followed successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
+    console.error("checkFollowStatus failed:", error.message);
+    res.json({ isFollowing: false });
   } finally {
     await session.close();
   }
@@ -52,8 +28,14 @@ const followUser = async (req, res) => {
 
 // TOGGLE FOLLOW (follow/unfollow)
 const toggleFollow = async (req, res) => {
-  const { followerUid, followingUid } = req.body;
-  const session = driver.session({ database: "irisdb" });
+  const followerUid = req.user.uid;
+  const { followingUid } = req.body;
+
+  if (!followingUid || followingUid === followerUid) {
+    return res.status(400).json({ error: "Invalid target user" });
+  }
+
+  const session = driver.session();
 
   try {
     const check = await session.run(
@@ -86,8 +68,8 @@ const toggleFollow = async (req, res) => {
       return res.json({ message: "Followed user" });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
+    console.error("toggleFollow failed:", error.message);
+    res.status(503).json({ error: "Follow service unavailable" });
   } finally {
     await session.close();
   }
@@ -96,7 +78,7 @@ const toggleFollow = async (req, res) => {
 // GET FOLLOWER COUNTS
 const getFollowerCounts = async (req, res) => {
   const { userId } = req.params;
-  const session = driver.session({ database: "irisdb" });
+  const session = driver.session();
 
   try {
     // Get followers count
@@ -125,8 +107,8 @@ const getFollowerCounts = async (req, res) => {
       following: followingCount
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
+    console.error("getFollowerCounts failed:", error.message);
+    res.json({ followers: 0, following: 0 });
   } finally {
     await session.close();
   }
@@ -135,7 +117,7 @@ const getFollowerCounts = async (req, res) => {
 // GET FOLLOWERS LIST
 const getFollowersList = async (req, res) => {
   const { userId } = req.params;
-  const session = driver.session({ database: "irisdb" });
+  const session = driver.session();
 
   try {
     const result = await session.run(
@@ -154,8 +136,8 @@ const getFollowersList = async (req, res) => {
     
     res.status(200).json(followers);
   } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
+    console.error("getFollowersList failed:", error.message);
+    res.json([]);
   } finally {
     await session.close();
   }
@@ -164,7 +146,7 @@ const getFollowersList = async (req, res) => {
 // GET FOLLOWING LIST
 const getFollowingList = async (req, res) => {
   const { userId } = req.params;
-  const session = driver.session({ database: "irisdb" });
+  const session = driver.session();
 
   try {
     const result = await session.run(
@@ -183,11 +165,11 @@ const getFollowingList = async (req, res) => {
     
     res.status(200).json(following);
   } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
+    console.error("getFollowingList failed:", error.message);
+    res.json([]);
   } finally {
     await session.close();
   }
 };
 
-module.exports = { followUser, toggleFollow, checkFollowStatus, getFollowerCounts, getFollowersList, getFollowingList };
+module.exports = { toggleFollow, checkFollowStatus, getFollowerCounts, getFollowersList, getFollowingList };

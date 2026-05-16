@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import axios from "axios";
+import { apiGet, apiPut } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
 import FollowButton from "../components/FollowButton";
 
@@ -36,22 +36,9 @@ const Profile = () => {
 
   const loadProfile = async () => {
     try {
-      // Try to get profile from backend
-      const response = await fetch(`/api/profile/${currentUser.uid}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      const data = await apiGet(`/profile/${currentUser.uid}`);
+      setProfile(data);
     } catch (error) {
-      console.log("Profile not found, using defaults");
       setProfile({
         name: currentUser.displayName || "User",
         bio: "",
@@ -66,57 +53,24 @@ const Profile = () => {
 
   const loadFollowersAndFollowing = async () => {
     try {
-      // Load followers
-      const followersResponse = await fetch(`/api/follow/followers/${currentUser.uid}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (followersResponse.ok) {
-        const followersData = await followersResponse.json();
-        setFollowers(followersData);
-      }
-
-      // Load following
-      const followingResponse = await fetch(`/api/follow/following/${currentUser.uid}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (followingResponse.ok) {
-        const followingData = await followingResponse.json();
-        setFollowing(followingData);
-      }
+      const [followersData, followingData] = await Promise.all([
+        apiGet(`/follow/followers/${currentUser.uid}`),
+        apiGet(`/follow/following/${currentUser.uid}`),
+      ]);
+      setFollowers(Array.isArray(followersData) ? followersData : []);
+      setFollowing(Array.isArray(followingData) ? followingData : []);
     } catch (error) {
-      console.error("Error loading followers/following:", error);
+      console.error("Error loading followers/following:", error.message);
     }
   };
 
   const saveProfile = async () => {
-    console.log("Profile saveProfile called", profile);
     setSaving(true);
     try {
-      const response = await fetch(`/api/profile/${currentUser.uid}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(profile)
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Profile saved successfully:", data);
-        setEditing(false);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await apiPut(`/profile/${currentUser.uid}`, profile);
+      setEditing(false);
     } catch (error) {
-      console.error("Failed to save profile:", error);
+      console.error("Failed to save profile:", error.message);
     } finally {
       setSaving(false);
     }

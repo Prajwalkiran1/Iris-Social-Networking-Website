@@ -1,22 +1,29 @@
 const driver = require("../config/neo4j");
+const { toIsoString } = require("../utils/neoTime");
 
-// GET FEED
+const num = (v) =>
+  v && typeof v === "object" && "low" in v ? v.low : Number(v) || 0;
+
+// GET /api/feed/:uid — own posts + posts from people you follow,
+// with real like counts and whether the requesting user liked each post.
 const getFeed = async (req, res) => {
-  const { uid } = req.params;
-  const session = driver.session({ database: "irisdb" });
+  const uid = req.user.uid;
+  const session = driver.session();
 
   try {
-    // Get posts from users you follow AND your own posts
     const result = await session.run(
       `
-      MATCH (u:User {uid:$uid})-[:FOLLOWS]->(f:User)-[:POSTED]->(p:Post)
-      RETURN f.uid AS authorUid, f.name AS authorName, p
-      
-      UNION
-      
-      MATCH (u:User {uid:$uid})-[:POSTED]->(p:Post)
-      RETURN u.uid AS authorUid, u.name AS authorName, p
-      
+      MATCH (me:User {uid:$uid})
+      MATCH (author:User)-[:POSTED]->(p:Post)
+      WHERE author = me OR (me)-[:FOLLOWS]->(author)
+      OPTIONAL MATCH (p)<-[:LIKED]-(liker:User)
+      WITH me, author, p, count(liker) AS likeCount
+      RETURN author.uid AS authorUid,
+             author.name AS authorName,
+             p,
+             likeCount,
+             EXISTS { (me)-[:LIKED]->(p) } AS isLiked,
+             EXISTS { (me)-[:FOLLOWS]->(author) } AS isFollowing
       ORDER BY p.timestamp DESC
       LIMIT 50
       `,
@@ -25,62 +32,28 @@ const getFeed = async (req, res) => {
 
     const posts = result.records.map((record) => {
       const post = record.get("p").properties;
-      const timestamp = post.timestamp;
-      
-      // Convert Neo4j datetime to ISO string
-      let isoTimestamp;
-      if (timestamp && typeof timestamp === 'object') {
-        isoTimestamp = new Date(
-          timestamp.year.low,
-          timestamp.month.low - 1,
-          timestamp.day.low,
-          timestamp.hour.low,
-          timestamp.minute.low,
-          timestamp.second.low,
-          timestamp.nanosecond.low / 1000000
-        ).toISOString();
-      } else if (timestamp) {
-        isoTimestamp = timestamp.toString();
-      } else {
-        isoTimestamp = new Date().toISOString();
-      }
-      
-      // Convert Neo4j Integer to regular number
-      let likeCount = 0;
-      if (post.likeCount) {
-        if (typeof post.likeCount === 'object' && post.likeCount.low !== undefined) {
-          likeCount = post.likeCount.low;
-        } else {
-          likeCount = Number(post.likeCount) || 0;
-        }
-      }
-      
-      const postData = {
+      return {
         id: post.id,
         content: post.content,
         imageUrl: post.imageUrl,
-        timestamp: isoTimestamp,
-        originalTimestamp: timestamp, // Keep original for debugging
-        likeCount: likeCount,
-        isLiked: false, // TODO: Implement like status check
+        timestamp: toIsoString(post.timestamp),
+        likeCount: num(record.get("likeCount")),
+        isLiked: record.get("isLiked"),
         author: {
           uid: record.get("authorUid"),
           name: record.get("authorName"),
-          isFollowing: false // TODO: Implement follow status check
-        }
+          isFollowing: record.get("isFollowing"),
+        },
       };
-      
-      console.log(`Post ${postData.id}: ${postData.timestamp} (original: ${timestamp})`);
-      return postData;
     });
-
-    // Additional sorting by ISO timestamp to ensure correct order
-    posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     res.json(posts);
   } catch (error) {
-    console.error(error);
-    res.status(500).json(error);
+    // Degrade gracefully like the other endpoints instead of leaking a 500.
+    console.error("Feed unavailable, returning fallback:", error.message);
+    res
+      .status(503)
+      .json({ error: "Feed temporarily unavailable", posts: [] });
   } finally {
     await session.close();
   }

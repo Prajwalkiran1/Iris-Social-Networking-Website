@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import axios from "axios";
+import { apiGet, apiPost } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
 
 const Chat = () => {
@@ -36,54 +36,26 @@ const Chat = () => {
 
   const loadChatData = async () => {
     try {
-      // Load all conversations for the current user
-      const conversationsResponse = await fetch(`/api/messages/conversations/${currentUser.uid}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (conversationsResponse.ok) {
-        const conversationsData = await conversationsResponse.json();
-        console.log("Conversations loaded:", conversationsData);
-        
-        // Format conversations for the UI
-        const formattedConversations = conversationsData.map(conv => ({
-          id: conv.uid,
-          user: { uid: conv.uid, name: conv.name },
-          lastMessage: conv.lastMessage || "No messages yet",
-          timestamp: conv.timestamp
-        }));
-        
-        setConversations(formattedConversations);
-      } else {
-        console.error("Failed to load conversations:", conversationsResponse.status);
-        setConversations([]);
-      }
-
-      // Load users for starting new conversations
-      const usersResponse = await fetch("/api/search/users?q=a", {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        const filteredUsers = usersData.filter(user => user.uid !== currentUser?.uid);
-        setUsers(filteredUsers);
-        setFilteredUsers(filteredUsers);
-        console.log("Users loaded for chat:", filteredUsers);
-      } else {
-        console.error("Failed to load users:", usersResponse.status);
-        setUsers([]);
-        setFilteredUsers([]);
-      }
+      const conversationsData = await apiGet("/messages/conversations");
+      const formattedConversations = (Array.isArray(conversationsData) ? conversationsData : []).map(conv => ({
+        id: conv.uid,
+        user: { uid: conv.uid, name: conv.name },
+        lastMessage: conv.lastMessage || "No messages yet",
+        timestamp: conv.timestamp
+      }));
+      setConversations(formattedConversations);
     } catch (error) {
-      console.error("Failed to load chat data:", error);
+      console.error("Failed to load conversations:", error.message);
       setConversations([]);
+    }
+
+    try {
+      const usersData = await apiGet("/search/users?q=a");
+      const list = (Array.isArray(usersData) ? usersData : []).filter(user => user.uid !== currentUser?.uid);
+      setUsers(list);
+      setFilteredUsers(list);
+    } catch (error) {
+      console.error("Failed to load users:", error.message);
       setUsers([]);
       setFilteredUsers([]);
     } finally {
@@ -92,8 +64,6 @@ const Chat = () => {
   };
 
   const startConversation = async (user) => {
-    console.log("Starting conversation with user:", user);
-    
     // Create conversation locally first
     const newChat = {
       id: Date.now().toString(),
@@ -107,38 +77,28 @@ const Chat = () => {
     
     // Try to load existing chat history from backend
     try {
-      const response = await fetch(`/api/messages/chat/${user.uid}?me=${currentUser.uid}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const chatHistory = await response.json();
-        console.log("Loaded chat history:", chatHistory);
-        if (chatHistory.length > 0) {
-          // Format messages from backend to match frontend structure
-          const formattedMessages = chatHistory.map((msg, index) => ({
-            id: msg.id || `backend-${index}-${Date.now()}`,
-            text: msg.text,
-            senderId: msg.sender,
-            timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString()
-          }));
-          setMessages(formattedMessages);
-          // Update last message in conversation
-          const lastMsg = formattedMessages[formattedMessages.length - 1];
-          setConversations(prev => 
-            prev.map(conv => 
-              conv.id === newChat.id 
-                ? { ...conv, lastMessage: lastMsg.text, timestamp: lastMsg.timestamp }
-                : conv
-            )
-          );
-        }
+      const chatHistory = await apiGet(`/messages/chat/${user.uid}`);
+      if (Array.isArray(chatHistory) && chatHistory.length > 0) {
+        // Format messages from backend to match frontend structure
+        const formattedMessages = chatHistory.map((msg, index) => ({
+          id: msg.id || `backend-${index}-${Date.now()}`,
+          text: msg.text,
+          senderId: msg.sender,
+          timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString()
+        }));
+        setMessages(formattedMessages);
+        // Update last message in conversation
+        const lastMsg = formattedMessages[formattedMessages.length - 1];
+        setConversations(prev =>
+          prev.map(conv =>
+            conv.id === newChat.id
+              ? { ...conv, lastMessage: lastMsg.text, timestamp: lastMsg.timestamp }
+              : conv
+          )
+        );
       }
     } catch (error) {
-      console.error("Failed to load chat history:", error);
+      console.error("Failed to load chat history:", error.message);
     }
   };
 
@@ -165,28 +125,14 @@ const Chat = () => {
       )
     );
 
-    // Send message to backend
+    // Send message to backend (sender derived from the auth token)
     try {
-      const response = await fetch('/api/messages/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          sender: currentUser.uid,
-          receiver: selectedChat.user.uid,
-          text: newMessage
-        })
+      await apiPost("/messages/send", {
+        receiver: selectedChat.user.uid,
+        text: newMessage
       });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log("Message sent successfully:", result);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
     } catch (error) {
-      console.error("Failed to send message:", error);
+      console.error("Failed to send message:", error.message);
     }
   };
 
@@ -258,7 +204,6 @@ const Chat = () => {
                   <button style={styles.startChatButton} onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log("Start chat button clicked for:", user);
                     startConversation(user);
                   }}>
                     Chat

@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
-const driver = require("../neo4j");
+const driver = require("../config/neo4j");
+const { validateProfile } = require("../middleware/validate");
 
 // GET /api/profile/:uid
 router.get("/:uid", async (req, res) => {
   const { uid } = req.params;
-  const session = driver.session({ database: "irisdb" });
+  const session = driver.session();
   
   try {
     const result = await session.run(
@@ -34,7 +35,7 @@ router.get("/:uid", async (req, res) => {
 
     res.json(user);
   } catch (error) {
-    console.error("Profile fetch error, using mock data:", error);
+    console.error("Profile fetch failed, using fallback:", error.message);
     // Fallback mock data
     res.json({
       uid,
@@ -50,10 +51,13 @@ router.get("/:uid", async (req, res) => {
 });
 
 // PUT /api/profile/:uid
-router.put("/:uid", async (req, res) => {
+router.put("/:uid", validateProfile, async (req, res) => {
   const { uid } = req.params;
+  if (uid !== req.user.uid) {
+    return res.status(403).json({ error: "You can only edit your own profile" });
+  }
   const { name, bio, interests } = req.body;
-  const session = driver.session({ database: "irisdb" });
+  const session = driver.session();
   
   try {
     await session.run(
@@ -64,8 +68,8 @@ router.put("/:uid", async (req, res) => {
     
     res.json({ message: "Profile updated successfully" });
   } catch (error) {
-    console.error("Profile update error:", error);
-    res.status(500).json({ error: "Failed to update profile" });
+    console.error("Profile update failed:", error.message);
+    res.status(503).json({ error: "Profile update temporarily unavailable" });
   } finally {
     await session.close();
   }

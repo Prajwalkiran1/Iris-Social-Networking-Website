@@ -5,8 +5,8 @@ import Signup from "./pages/Signup";
 import Profile from "./pages/Profile";
 import HomeFeed from "./pages/HomeFeed";
 import Chat from "./pages/Chat";
-import CreatePost from "./pages/CreatePost";
 import Search from "./pages/Search";
+import Explore from "./pages/Explore";
 
 import Navbar from "./components/Navbar";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -62,9 +62,9 @@ const AppContent = () => {
             <Search />
           </ProtectedRoute>
         } />
-        <Route path="/create" element={
+        <Route path="/explore" element={
           <ProtectedRoute>
-            <CreatePost />
+            <Explore />
           </ProtectedRoute>
         } />
       </Routes>

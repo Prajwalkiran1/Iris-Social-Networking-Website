@@ -1,76 +1,71 @@
 pipeline {
     agent any
+
     tools {
         nodejs 'NodeJS-20'
     }
+
+    options {
+        timestamps()
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
     stages {
         stage('Checkout') {
             steps {
-                echo '📥 Pulling latest code...'
+                echo 'Pulling latest code...'
                 checkout scm
             }
         }
-        stage('Install Backend Dependencies') {
-            steps {
-                echo '📦 Installing backend dependencies...'
-                dir('backend') {
-                    bat 'npm install'
+
+        stage('Install') {
+            parallel {
+                stage('Backend deps') {
+                    steps {
+                        dir('backend') { bat 'npm ci' }
+                    }
+                }
+                stage('Frontend deps') {
+                    steps {
+                        dir('frontend') { bat 'npm ci' }
+                    }
                 }
             }
         }
-        stage('Install Frontend Dependencies') {
-            steps {
-                echo '📦 Installing frontend dependencies...'
-                dir('frontend') {
-                    bat 'npm install'
+
+        stage('Test') {
+            parallel {
+                stage('Backend tests') {
+                    steps {
+                        dir('backend') { bat 'npm test' }
+                    }
+                }
+                stage('Frontend tests') {
+                    steps {
+                        dir('frontend') { bat 'npm test' }
+                    }
                 }
             }
         }
-        stage('Run Frontend Tests') {
+
+        stage('Build frontend') {
             steps {
-                echo '🧪 Running frontend tests...'
-                dir('frontend') {
-                    bat 'set CI=true && npm test -- --watchAll=false --passWithNoTests'
-                }
-            }
-        }
-        stage('Deploy') {
-            steps {
-                echo '🚀 Stopping any existing processes...'
-                bat 'taskkill /F /IM node.exe /T & exit 0'
-
-                echo '🚀 Writing environment config...'
-                dir('backend') {
-                    bat '''
-                        echo NEO4J_URI=bolt://localhost:7687> .env
-                        echo NEO4J_USER=neo4j>> .env
-                        echo NEO4J_PASSWORD=password123>> .env
-                        echo PORT=5001>> .env
-                    '''
-                }
-
-                echo '🚀 Writing startup batch file...'
-                bat '''
-                    echo @echo off > C:\\Users\\Prajwal\\Desktop\\start-app.bat
-                    echo start "Backend" /D "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\Social-Network-Pipeline\\backend" "C:\\Program Files\\nodejs\\node.exe" server.js >> C:\\Users\\Prajwal\\Desktop\\start-app.bat
-                    echo set CI= >> C:\\Users\\Prajwal\\Desktop\\start-app.bat
-                    echo start "Frontend" /D "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\Social-Network-Pipeline\\frontend" cmd /k ""C:\\Program Files\\nodejs\\npm.cmd" start" >> C:\\Users\\Prajwal\\Desktop\\start-app.bat
-                '''
-
-                echo '🚀 Launching app...'
-                bat 'powershell -Command "Start-Process -FilePath \'C:\\Users\\Prajwal\\Desktop\\start-app.bat\' -WindowStyle Normal"'
-
-                echo '✅ Backend running at http://localhost:5001'
-                echo '✅ Frontend running at http://localhost:3000'
+                // Tests mock Firebase/Neo4j, so no secrets are needed in CI.
+                // The bundle only needs the public Firebase web identifiers;
+                // wire them as Jenkins credentials/parameters for a fully
+                // configured build — otherwise the build still succeeds.
+                dir('frontend') { bat 'npm run build' }
             }
         }
     }
+
     post {
         success {
-            echo '🎉 Pipeline completed successfully!'
+            echo 'Pipeline completed successfully.'
+            archiveArtifacts artifacts: 'frontend/dist/**', allowEmptyArchive: true
         }
         failure {
-            echo '❌ Pipeline failed. Check the logs above.'
+            echo 'Pipeline failed. Check the stage logs above.'
         }
     }
 }

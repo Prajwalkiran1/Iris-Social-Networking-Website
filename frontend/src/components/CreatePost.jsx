@@ -1,64 +1,65 @@
 import { useState } from "react"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useAuth } from "../contexts/AuthContext"
 import { createPost } from "../services/postApi"
+import { storage } from "../firebaseConfig"
+import { colors, font, radius, space } from "../theme"
 
 const CreatePost = ({ onCreate }) => {
   const [content, setContent] = useState("")
-  const [image, setImage] = useState(null)
+  const [file, setFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
   const { currentUser } = useAuth()
 
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        // Convert to base64 string for storage
-        const result = reader.result;
-        console.log("Image converted to base64:", result.substring(0, 50) + "...");
-        setImage(result);
-      };
-      reader.readAsDataURL(file);
+    const selected = e.target.files[0]
+    if (!selected) return
+    if (selected.size > 5 * 1024 * 1024) {
+      setError("Image must be under 5MB")
+      return
     }
-  };
+    setError("")
+    setFile(selected)
+    setPreviewUrl(URL.createObjectURL(selected))
+  }
 
   const handleSubmit = async () => {
-    console.log("CreatePost handleSubmit called", { content, image, currentUser });
-    if (!content.trim() && !image) {
-      console.log("No content or image, returning");
-      return;
-    }
-    if (!currentUser) {
-      console.log("No current user, returning");
-      return;
-    }
+    if (!content.trim() && !file) return
+    if (!currentUser) return
 
     setLoading(true)
+    setError("")
     try {
-      const postData = {
-        content,
-        imageUrl: image || "",
-        uid: currentUser.uid
+      let imageUrl = ""
+      if (file) {
+        // Store the image in Firebase Storage; only the URL goes to the graph.
+        const path = `posts/${currentUser.uid}/${Date.now()}-${file.name}`
+        const snap = await uploadBytes(ref(storage, path), file)
+        imageUrl = await getDownloadURL(snap.ref)
       }
-
-      console.log("Creating post with data:", postData);
-      const newPost = await createPost(postData)
-      console.log("Post created successfully:", newPost);
+      const newPost = await createPost({ content, imageUrl })
       onCreate(newPost)
       setContent("")
-      setImage(null)
-    } catch (error) {
-      console.error("Failed to create post:", error)
+      setFile(null)
+      setPreviewUrl(null)
+    } catch (err) {
+      console.error("Failed to create post:", err.message)
+      setError("Couldn't publish your post. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form style={styles.container} onSubmit={(e) => {
-      e.preventDefault();
-      handleSubmit();
-    }}>
+    <form
+      style={styles.container}
+      onSubmit={(e) => {
+        e.preventDefault()
+        handleSubmit()
+      }}
+    >
       <textarea
         placeholder="Share something..."
         value={content}
@@ -67,28 +68,28 @@ const CreatePost = ({ onCreate }) => {
         disabled={loading}
       />
 
-      <input 
-        type="file" 
-        accept="image/*" 
+      <input
+        type="file"
+        accept="image/*"
         onChange={handleImageChange}
         disabled={loading}
         style={styles.fileInput}
       />
 
-      {image && (
-        <img src={image} alt="preview" style={styles.preview} />
-      )}
+      {previewUrl && <img src={previewUrl} alt="preview" style={styles.preview} />}
 
-      <button 
+      {error && <div style={styles.error}>{error}</div>}
+
+      <button
         type="submit"
-        disabled={loading || !content.trim()}
+        disabled={loading || (!content.trim() && !file)}
         style={{
           ...styles.button,
-          opacity: (loading || !content.trim()) ? 0.6 : 1,
-          cursor: (loading || !content.trim()) ? 'not-allowed' : 'pointer'
+          opacity: loading || (!content.trim() && !file) ? 0.6 : 1,
+          cursor: loading || (!content.trim() && !file) ? "not-allowed" : "pointer",
         }}
       >
-        {loading ? "Posting..." : "Post"}
+        {loading ? "Posting…" : "Post"}
       </button>
     </form>
   )
@@ -96,45 +97,51 @@ const CreatePost = ({ onCreate }) => {
 
 const styles = {
   container: {
-    background: "#1f1f1f",
-    padding: "20px",
-    borderRadius: "8px",
-    marginBottom: "20px"
+    background: colors.surfaceAlt,
+    padding: space(5),
+    borderRadius: radius.md,
+    marginBottom: space(5),
   },
   textarea: {
     width: "100%",
     padding: "10px",
-    borderRadius: "6px",
-    border: "none",
+    borderRadius: radius.sm,
+    border: `1px solid ${colors.border}`,
     marginBottom: "10px",
-    backgroundColor: "#2a2a2a",
-    color: "#fff",
+    backgroundColor: colors.input,
+    color: colors.text,
     fontSize: "14px",
+    fontFamily: font.family,
     resize: "vertical",
-    minHeight: "80px"
+    minHeight: "80px",
   },
   fileInput: {
     marginBottom: "10px",
-    color: "#fff"
+    color: colors.textMuted,
+    fontSize: "13px",
   },
   preview: {
     width: "100%",
     maxHeight: "200px",
     objectFit: "cover",
     marginTop: "10px",
-    borderRadius: "8px"
+    borderRadius: radius.md,
+  },
+  error: {
+    marginTop: "10px",
+    color: colors.danger,
+    fontSize: "13px",
   },
   button: {
     marginTop: "10px",
-    padding: "8px 16px",
-    borderRadius: "6px",
+    padding: "10px 18px",
+    borderRadius: radius.md,
     border: "none",
-    cursor: "pointer",
-    background: "#22c55e",
+    background: colors.success,
     color: "white",
     fontSize: "14px",
-    fontWeight: "500"
-  }
+    fontWeight: 600,
+  },
 }
 
 export default CreatePost

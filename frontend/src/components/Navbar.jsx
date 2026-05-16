@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { FaHome, FaSearch, FaEnvelope, FaBell, FaUser, FaSignOutAlt } from "react-icons/fa"
+import { FaHome, FaCompass, FaSearch, FaEnvelope, FaUser, FaSignOutAlt } from "react-icons/fa"
 import { useAuth } from "../contexts/AuthContext"
 
 const Navbar = () => {
@@ -19,14 +19,12 @@ const Navbar = () => {
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
     >
-      <h2 style={styles.logo(expanded)}>
-        {expanded ? "Iris" : "Iris"}
-      </h2>
+      <h2 style={styles.logo(expanded)}>Iris</h2>
 
       <NavItem icon={<FaHome />} label="Home" expanded={expanded} onClick={() => navigate("/home")} />
+      <NavItem icon={<FaCompass />} label="Explore" expanded={expanded} onClick={() => navigate("/explore")} />
       <NavItem icon={<FaSearch />} label="Search" expanded={expanded} onClick={() => navigate("/search")} />
       <NavItem icon={<FaEnvelope />} label="Messages" expanded={expanded} onClick={() => navigate("/chat")} />
-      <NavItem icon={<FaBell />} label="Notifications" expanded={expanded} />
       <NavItem icon={<FaUser />} label="Profile" expanded={expanded} onClick={() => navigate("/profile")} />
       
       <div style={{ marginTop: "20px" }}>

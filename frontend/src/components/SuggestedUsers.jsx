@@ -2,47 +2,55 @@ import React from 'react';
 import FollowButton from './FollowButton';
 import { useAuth } from '../contexts/AuthContext';
 
-const SuggestedUsers = ({ users, posts, onToggleFollow }) => {
+// Renders graph-native "people you may know" — each user may carry a
+// `mutuals` count (shared connections) and/or `interests`.
+const SuggestedUsers = ({ users = [] }) => {
   const { currentUser } = useAuth();
 
-  const isUserFollowed = (userId) => {
-    return posts.some(
-      (post) => post.author.uid === userId && post.author.isFollowing
-    )
+  if (!users.length) {
+    return (
+      <div style={styles.container}>
+        <h3 style={styles.title}>People you may know</h3>
+        <p style={styles.empty}>
+          Follow a few people and we'll suggest connections from your network.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div style={styles.container}>
-      <h3 style={styles.title}>Suggested Users</h3>
+      <h3 style={styles.title}>People you may know</h3>
 
-      {users.map((user) => {
-        const followed = isUserFollowed(user.uid)
-
-        return (
-          <div key={user.uid} style={styles.userCard}>
-            <div style={styles.userInfo}>
-              <div style={styles.userName}>{user.name}</div>
-              {user.interests && user.interests.length > 0 && (
-                <div style={styles.interests}>
-                  {user.interests.slice(0, 3).map((interest, i) => (
-                    <span key={i} style={styles.interestTag}>
-                      {interest}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <FollowButton 
-              targetUserId={user.uid} 
-              currentUserId={currentUser?.uid}
-            />
+      {users.map((user) => (
+        <div key={user.uid} style={styles.userCard}>
+          <div style={styles.userInfo}>
+            <div style={styles.userName}>{user.name}</div>
+            {user.mutuals > 0 && (
+              <div style={styles.mutuals}>
+                {user.mutuals} mutual connection{user.mutuals > 1 ? 's' : ''}
+              </div>
+            )}
+            {user.interests && user.interests.length > 0 && (
+              <div style={styles.interests}>
+                {user.interests.slice(0, 3).map((interest, i) => (
+                  <span key={i} style={styles.interestTag}>
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-        )
-      })}
+
+          <FollowButton
+            targetUserId={user.uid}
+            currentUserId={currentUser?.uid}
+          />
+        </div>
+      ))}
     </div>
-  )
-}
+  );
+};
 
 const styles = {
   container: {
@@ -56,6 +64,11 @@ const styles = {
     marginBottom: "15px",
     fontSize: "18px",
     fontWeight: "500"
+  },
+  empty: {
+    color: "#888",
+    fontSize: "13px",
+    lineHeight: 1.5
   },
   userCard: {
     display: "flex",
@@ -72,6 +85,11 @@ const styles = {
   userName: {
     color: "#fff",
     fontWeight: "500",
+    marginBottom: "4px"
+  },
+  mutuals: {
+    color: "#8b5cf6",
+    fontSize: "12px",
     marginBottom: "5px"
   },
   interests: {
@@ -86,6 +104,6 @@ const styles = {
     fontSize: "11px",
     color: "#aaa"
   }
-}
+};
 
-export default SuggestedUsers
+export default SuggestedUsers;
