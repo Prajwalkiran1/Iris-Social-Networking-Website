@@ -15,14 +15,18 @@ const formatConversations = (data) =>
   }));
 
 const formatMessages = (data) =>
-  (Array.isArray(data) ? data : []).map((msg, i) => ({
-    id: msg.id || `srv-${i}`,
-    text: msg.text,
-    senderId: msg.sender,
-    timestamp: msg.timestamp
-      ? new Date(msg.timestamp).toISOString()
-      : new Date().toISOString(),
-  }));
+  (Array.isArray(data) ? data : [])
+    .map((msg, i) => ({
+      id: msg.id || `srv-${i}`,
+      text: msg.text,
+      senderId: msg.sender,
+      timestamp: msg.timestamp
+        ? new Date(msg.timestamp).toISOString()
+        : new Date().toISOString(),
+    }))
+    // Belt-and-suspenders: backend already orders by timestamp, but sort
+    // here too so the UI is correct even if any ordering ever regresses.
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
 const Chat = () => {
   const { currentUser } = useAuth();
