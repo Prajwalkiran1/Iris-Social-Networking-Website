@@ -1,7 +1,28 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
+
+const MESSAGE_POLL_MS = 3000;
+const CONVERSATIONS_POLL_MS = 10000;
+
+const formatConversations = (data) =>
+  (Array.isArray(data) ? data : []).map((conv) => ({
+    id: conv.uid,
+    user: { uid: conv.uid, name: conv.name },
+    lastMessage: conv.lastMessage || "No messages yet",
+    timestamp: conv.timestamp || new Date().toISOString(),
+  }));
+
+const formatMessages = (data) =>
+  (Array.isArray(data) ? data : []).map((msg, i) => ({
+    id: msg.id || `srv-${i}`,
+    text: msg.text,
+    senderId: msg.sender,
+    timestamp: msg.timestamp
+      ? new Date(msg.timestamp).toISOString()
+      : new Date().toISOString(),
+  }));
 
 const Chat = () => {
   const { currentUser } = useAuth();
@@ -15,124 +36,146 @@ const Chat = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Polling reads selectedChat from a ref so the interval callbacks see the
+  // latest selection without restarting the interval each switch.
+  const selectedChatRef = useRef(null);
   useEffect(() => {
-    if (currentUser) {
-      loadChatData();
-    } else {
-      navigate("/");
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const data = await apiGet("/messages/conversations");
+      setConversations(formatConversations(data));
+    } catch (error) {
+      console.error("Failed to load conversations:", error.message);
     }
-  }, [currentUser, navigate]);
+  }, []);
+
+  const loadMessages = useCallback(async (otherUid) => {
+    try {
+      const data = await apiGet(`/messages/chat/${otherUid}`);
+      // Drop any optimistic local-prefixed messages that the server now
+      // has; replace wholesale with the server's authoritative list.
+      setMessages(formatMessages(data));
+    } catch (error) {
+      console.error("Failed to load chat history:", error.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate("/");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      await loadConversations();
+      try {
+        const usersData = await apiGet("/search/users?q=a");
+        if (cancelled) return;
+        const list = (Array.isArray(usersData) ? usersData : []).filter(
+          (u) => u.uid !== currentUser?.uid
+        );
+        setUsers(list);
+        setFilteredUsers(list);
+      } catch (error) {
+        console.error("Failed to load users:", error.message);
+        setUsers([]);
+        setFilteredUsers([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, navigate, loadConversations]);
+
+  // Poll: refresh open chat every 3s, refresh conversation list every 10s.
+  useEffect(() => {
+    if (!currentUser) return;
+    const msgInterval = setInterval(() => {
+      const cur = selectedChatRef.current;
+      if (cur) loadMessages(cur.user.uid);
+    }, MESSAGE_POLL_MS);
+    const convInterval = setInterval(loadConversations, CONVERSATIONS_POLL_MS);
+    return () => {
+      clearInterval(msgInterval);
+      clearInterval(convInterval);
+    };
+  }, [currentUser, loadConversations, loadMessages]);
 
   // Filter users based on search term
   useEffect(() => {
-    const filtered = users.filter(user => 
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.interests && user.interests.some(interest => 
-        interest.toLowerCase().includes(searchTerm.toLowerCase())
-      ))
+    const filtered = users.filter(
+      (user) =>
+        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (user.interests &&
+          user.interests.some((interest) =>
+            interest.toLowerCase().includes(searchTerm.toLowerCase())
+          ))
     );
     setFilteredUsers(filtered);
   }, [searchTerm, users]);
 
-  const loadChatData = async () => {
-    try {
-      const conversationsData = await apiGet("/messages/conversations");
-      const formattedConversations = (Array.isArray(conversationsData) ? conversationsData : []).map(conv => ({
-        id: conv.uid,
-        user: { uid: conv.uid, name: conv.name },
-        lastMessage: conv.lastMessage || "No messages yet",
-        timestamp: conv.timestamp
-      }));
-      setConversations(formattedConversations);
-    } catch (error) {
-      console.error("Failed to load conversations:", error.message);
-      setConversations([]);
-    }
-
-    try {
-      const usersData = await apiGet("/search/users?q=a");
-      const list = (Array.isArray(usersData) ? usersData : []).filter(user => user.uid !== currentUser?.uid);
-      setUsers(list);
-      setFilteredUsers(list);
-    } catch (error) {
-      console.error("Failed to load users:", error.message);
-      setUsers([]);
-      setFilteredUsers([]);
-    } finally {
-      setLoading(false);
-    }
+  const selectChat = async (conversation) => {
+    setSelectedChat(conversation);
+    setMessages([]);
+    await loadMessages(conversation.user.uid);
   };
 
   const startConversation = async (user) => {
-    // Create conversation locally first
-    const newChat = {
-      id: Date.now().toString(),
-      user,
-      lastMessage: "Start a conversation...",
-      timestamp: new Date().toISOString()
-    };
-    setConversations(prev => [newChat, ...prev]);
-    setSelectedChat(newChat);
-    setMessages([]);
-    
-    // Try to load existing chat history from backend
-    try {
-      const chatHistory = await apiGet(`/messages/chat/${user.uid}`);
-      if (Array.isArray(chatHistory) && chatHistory.length > 0) {
-        // Format messages from backend to match frontend structure
-        const formattedMessages = chatHistory.map((msg, index) => ({
-          id: msg.id || `backend-${index}-${Date.now()}`,
-          text: msg.text,
-          senderId: msg.sender,
-          timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString()
-        }));
-        setMessages(formattedMessages);
-        // Update last message in conversation
-        const lastMsg = formattedMessages[formattedMessages.length - 1];
-        setConversations(prev =>
-          prev.map(conv =>
-            conv.id === newChat.id
-              ? { ...conv, lastMessage: lastMsg.text, timestamp: lastMsg.timestamp }
-              : conv
-          )
-        );
-      }
-    } catch (error) {
-      console.error("Failed to load chat history:", error.message);
+    // If we already have a conversation with this user, just switch to it
+    // rather than creating a phantom duplicate keyed by Date.now().
+    const existing = conversations.find((c) => c.user.uid === user.uid);
+    if (existing) {
+      await selectChat(existing);
+      return;
     }
+    const newChat = {
+      id: user.uid,
+      user,
+      lastMessage: "No messages yet",
+      timestamp: new Date().toISOString(),
+    };
+    setConversations((prev) => [newChat, ...prev]);
+    await selectChat(newChat);
   };
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
-
-    const message = {
-      id: Date.now().toString(),
-      text: newMessage,
+    const text = newMessage;
+    const tempId = `local-${Date.now()}`;
+    const optimistic = {
+      id: tempId,
+      text,
       senderId: currentUser.uid,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    // Add message to local state immediately
-    setMessages(prev => [...prev, message]);
+    setMessages((prev) => [...prev, optimistic]);
     setNewMessage("");
-
-    // Update conversation's last message
-    setConversations(prev => 
-      prev.map(conv => 
-        conv.id === selectedChat.id 
-          ? { ...conv, lastMessage: newMessage, timestamp: message.timestamp }
-          : conv
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.user.uid === selectedChat.user.uid
+          ? { ...c, lastMessage: text, timestamp: optimistic.timestamp }
+          : c
       )
     );
 
-    // Send message to backend (sender derived from the auth token)
     try {
       await apiPost("/messages/send", {
         receiver: selectedChat.user.uid,
-        text: newMessage
+        text,
       });
+      // Reconcile with the server: replaces the optimistic message with
+      // the canonical one (and surfaces any messages the other party sent
+      // in between).
+      await loadMessages(selectedChat.user.uid);
     } catch (error) {
       console.error("Failed to send message:", error.message);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
   };
 
@@ -161,7 +204,7 @@ const Chat = () => {
                   ...styles.conversationItem,
                   backgroundColor: selectedChat?.id === conversation.id ? "#2a2a2a" : "transparent"
                 }}
-                onClick={() => setSelectedChat(conversation)}
+                onClick={() => selectChat(conversation)}
               >
                 <div style={styles.conversationInfo}>
                   <div style={styles.conversationName}>{conversation.user.name}</div>

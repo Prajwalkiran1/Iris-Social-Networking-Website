@@ -80,17 +80,30 @@ exports.getAllConversations = async (req, res) => {
   const userId = req.user.uid;
 
   try {
-    // Get all conversations where the user is either sender or receiver
+    // For each conversation partner, pick the latest message across both
+    // send directions. The previous query reused `m` across two OPTIONAL
+    // MATCHes and grouped per-row, returning incorrect results when both
+    // sides had sent messages.
     const result = await session.run(
       `
-      MATCH (u:User {uid:$userId})
-      OPTIONAL MATCH (u)-[:SENT]->(m)-[:TO]->(other:User)
-      OPTIONAL MATCH (other:User)-[:SENT]->(m)-[:TO]->(u)
+      MATCH (me:User {uid:$userId})
+      CALL {
+        WITH me
+        MATCH (me)-[:SENT]->(m:Message)-[:TO]->(other:User)
+        RETURN other, m
+        UNION
+        WITH me
+        MATCH (other:User)-[:SENT]->(m:Message)-[:TO]->(me)
+        RETURN other, m
+      }
       WITH other, m
       ORDER BY m.timestamp DESC
-      WITH other, collect(m)[0] AS lastMessage
-      WHERE lastMessage IS NOT NULL
-      RETURN DISTINCT other.uid AS uid, other.name AS name, lastMessage.text AS lastMessage, lastMessage.timestamp AS timestamp
+      WITH other, head(collect(m)) AS lastMessage
+      RETURN other.uid AS uid,
+             other.name AS name,
+             lastMessage.text AS lastMessage,
+             lastMessage.timestamp AS timestamp
+      ORDER BY lastMessage.timestamp DESC
       `,
       { userId }
     );
