@@ -1,147 +1,208 @@
-import { useState } from "react"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
-import { useAuth } from "../contexts/AuthContext"
-import { createPost } from "../services/postApi"
-import { storage } from "../firebaseConfig"
-import { colors, font, radius, space } from "../theme"
+import { useState } from "react";
+import { FiImage as ImagePlus, FiX as X, FiSend as Send } from "react-icons/fi";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useAuth } from "../contexts/AuthContext";
+import { createPost } from "../services/postApi";
+import { storage } from "../firebaseConfig";
+import {
+  colors,
+  glassCard,
+  radius,
+  spacing,
+  type,
+  button,
+  font,
+  transition,
+} from "../theme";
 
 const CreatePost = ({ onCreate }) => {
-  const [content, setContent] = useState("")
-  const [file, setFile] = useState(null)
-  const [previewUrl, setPreviewUrl] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const { currentUser } = useAuth()
+  const [content, setContent] = useState("");
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const { currentUser } = useAuth();
 
   const handleImageChange = (e) => {
-    const selected = e.target.files[0]
-    if (!selected) return
+    const selected = e.target.files[0];
+    if (!selected) return;
     if (selected.size > 5 * 1024 * 1024) {
-      setError("Image must be under 5MB")
-      return
+      setError("Image must be under 5MB");
+      return;
     }
-    setError("")
-    setFile(selected)
-    setPreviewUrl(URL.createObjectURL(selected))
-  }
+    setError("");
+    setFile(selected);
+    setPreviewUrl(URL.createObjectURL(selected));
+  };
+
+  const clearImage = () => {
+    setFile(null);
+    setPreviewUrl(null);
+  };
 
   const handleSubmit = async () => {
-    if (!content.trim() && !file) return
-    if (!currentUser) return
+    if (!content.trim() && !file) return;
+    if (!currentUser) return;
 
-    setLoading(true)
-    setError("")
+    setLoading(true);
+    setError("");
     try {
-      let imageUrl = ""
+      let imageUrl = "";
       if (file) {
-        // Store the image in Firebase Storage; only the URL goes to the graph.
-        const path = `posts/${currentUser.uid}/${Date.now()}-${file.name}`
-        const snap = await uploadBytes(ref(storage, path), file)
-        imageUrl = await getDownloadURL(snap.ref)
+        const path = `posts/${currentUser.uid}/${Date.now()}-${file.name}`;
+        const snap = await uploadBytes(ref(storage, path), file);
+        imageUrl = await getDownloadURL(snap.ref);
       }
-      const newPost = await createPost({ content, imageUrl })
-      onCreate(newPost)
-      setContent("")
-      setFile(null)
-      setPreviewUrl(null)
+      const newPost = await createPost({ content, imageUrl });
+      onCreate(newPost);
+      setContent("");
+      setFile(null);
+      setPreviewUrl(null);
     } catch (err) {
-      console.error("Failed to create post:", err.message)
-      setError("Couldn't publish your post. Please try again.")
+      console.error("Failed to create post:", err.message);
+      setError("Couldn't publish your post. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
+
+  const disabled = loading || (!content.trim() && !file);
 
   return (
     <form
-      style={styles.container}
+      style={{
+        ...glassCard({ padded: false }),
+        padding: spacing.xl,
+        marginBottom: spacing.xl,
+      }}
       onSubmit={(e) => {
-        e.preventDefault()
-        handleSubmit()
+        e.preventDefault();
+        handleSubmit();
       }}
     >
       <textarea
-        placeholder="Share something..."
+        placeholder="What's on your mind?"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        style={styles.textarea}
         disabled={loading}
-      />
-
-      <input
-        type="file"
-        accept="image/*"
-        onChange={handleImageChange}
-        disabled={loading}
-        style={styles.fileInput}
-      />
-
-      {previewUrl && <img src={previewUrl} alt="preview" style={styles.preview} />}
-
-      {error && <div style={styles.error}>{error}</div>}
-
-      <button
-        type="submit"
-        disabled={loading || (!content.trim() && !file)}
+        rows={3}
         style={{
-          ...styles.button,
-          opacity: loading || (!content.trim() && !file) ? 0.6 : 1,
-          cursor: loading || (!content.trim() && !file) ? "not-allowed" : "pointer",
+          width: "100%",
+          padding: spacing.md,
+          borderRadius: radius.md,
+          border: `1px solid ${colors.border}`,
+          background: colors.input,
+          color: colors.text,
+          ...type.body,
+          fontFamily: font.family,
+          resize: "vertical",
+          minHeight: "90px",
+          transition: transition(["border-color", "background"]),
+          boxSizing: "border-box",
+        }}
+      />
+
+      {previewUrl && (
+        <div
+          style={{
+            position: "relative",
+            marginTop: spacing.md,
+            borderRadius: radius.md,
+            overflow: "hidden",
+            border: `1px solid ${colors.glassBorder}`,
+          }}
+        >
+          <img
+            src={previewUrl}
+            alt="preview"
+            style={{
+              width: "100%",
+              maxHeight: "260px",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+          <button
+            type="button"
+            onClick={clearImage}
+            aria-label="Remove image"
+            style={{
+              position: "absolute",
+              top: spacing.sm,
+              right: spacing.sm,
+              width: "32px",
+              height: "32px",
+              borderRadius: radius.pill,
+              background: "rgba(0,0,0,0.55)",
+              border: `1px solid ${colors.glassBorder}`,
+              color: colors.text,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div
+          style={{
+            marginTop: spacing.md,
+            color: colors.danger,
+            ...type.footnote,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginTop: spacing.md,
+          gap: spacing.md,
         }}
       >
-        {loading ? "Posting…" : "Post"}
-      </button>
+        <label
+          style={{
+            ...button("secondary", { size: "sm" }),
+            cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          <ImagePlus size={15} />
+          {file ? "Change image" : "Add image"}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            disabled={loading}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={disabled}
+          style={{
+            ...button("primary", { size: "md" }),
+            opacity: disabled ? 0.55 : 1,
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          <Send size={15} />
+          {loading ? "Posting…" : "Post"}
+        </button>
+      </div>
     </form>
-  )
-}
+  );
+};
 
-const styles = {
-  container: {
-    background: colors.surfaceAlt,
-    padding: space(5),
-    borderRadius: radius.md,
-    marginBottom: space(5),
-  },
-  textarea: {
-    width: "100%",
-    padding: "10px",
-    borderRadius: radius.sm,
-    border: `1px solid ${colors.border}`,
-    marginBottom: "10px",
-    backgroundColor: colors.input,
-    color: colors.text,
-    fontSize: "14px",
-    fontFamily: font.family,
-    resize: "vertical",
-    minHeight: "80px",
-  },
-  fileInput: {
-    marginBottom: "10px",
-    color: colors.textMuted,
-    fontSize: "13px",
-  },
-  preview: {
-    width: "100%",
-    maxHeight: "200px",
-    objectFit: "cover",
-    marginTop: "10px",
-    borderRadius: radius.md,
-  },
-  error: {
-    marginTop: "10px",
-    color: colors.danger,
-    fontSize: "13px",
-  },
-  button: {
-    marginTop: "10px",
-    padding: "10px 18px",
-    borderRadius: radius.md,
-    border: "none",
-    background: colors.success,
-    color: "white",
-    fontSize: "14px",
-    fontWeight: 600,
-  },
-}
-
-export default CreatePost
+export default CreatePost;

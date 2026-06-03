@@ -6,6 +6,16 @@ import PostCard from "../components/PostCard";
 import CreatePost from "../components/CreatePost";
 import SuggestedUsers from "../components/SuggestedUsers";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  colors,
+  spacing,
+  radius,
+  type,
+  glassCard,
+  gradients,
+  pageShell,
+  pageContent,
+} from "../theme";
 
 const HomeFeed = () => {
   const [posts, setPosts] = useState([]);
@@ -16,16 +26,16 @@ const HomeFeed = () => {
     name: "",
     uid: "",
     followers: 0,
-    following: 0
+    following: 0,
   });
 
   const fetchFollowerCounts = async (userId) => {
     try {
       const data = await apiGet(`/follow/counts/${userId}`);
-      setCurrentUserData(prev => ({
+      setCurrentUserData((prev) => ({
         ...prev,
         followers: data.followers,
-        following: data.following
+        following: data.following,
       }));
     } catch (error) {
       console.error("Error fetching follower counts:", error.message);
@@ -36,7 +46,6 @@ const HomeFeed = () => {
     const loadFeedData = async () => {
       setLoading(true);
       try {
-        // Load posts
         const postsData = await getFeed();
         const safeData = postsData.map((post) => ({
           id: post.id,
@@ -48,12 +57,11 @@ const HomeFeed = () => {
           author: {
             uid: post.author?.uid || "",
             name: post.author?.name || "Unknown",
-            isFollowing: post.author?.isFollowing || false
-          }
+            isFollowing: post.author?.isFollowing || false,
+          },
         }));
         setPosts(safeData);
 
-        // Graph-native "people you may know" (2-hop FOLLOWS recommendations)
         try {
           const data = await apiGet("/recommendations/people");
           setSuggestedUsers((Array.isArray(data) ? data : []).slice(0, 5));
@@ -61,11 +69,12 @@ const HomeFeed = () => {
           setSuggestedUsers([]);
         }
 
-        // Fetch follower counts for current user
         if (currentUser?.uid) {
           setCurrentUserData({
             name: currentUser.displayName || "User",
-            uid: currentUser.uid
+            uid: currentUser.uid,
+            followers: 0,
+            following: 0,
           });
           await fetchFollowerCounts(currentUser.uid);
         }
@@ -87,253 +96,223 @@ const HomeFeed = () => {
     setPosts((prev) => [newPost, ...prev]);
   };
 
-  const handleFollowToggle = (postId) => {
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              author: {
-                ...post.author,
-                isFollowing: !post.author.isFollowing
-              }
-            }
-          : post
-      )
-    );
-  };
-
   const applyPost = (postId, patch) =>
     setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId ? { ...post, ...patch } : post
-      )
+      prev.map((post) => (post.id === postId ? { ...post, ...patch } : post))
     );
 
   const handleLikeToggle = async (postId) => {
     const target = posts.find((p) => p.id === postId);
     if (!target || !currentUser?.uid) return;
 
-    // Optimistic update
     applyPost(postId, {
       isLiked: !target.isLiked,
       likeCount: target.isLiked
         ? Math.max(0, target.likeCount - 1)
-        : target.likeCount + 1
+        : target.likeCount + 1,
     });
 
     try {
       const data = await toggleLike(postId);
-      // Reconcile with the authoritative server count
       applyPost(postId, {
         isLiked: data.isLiked,
-        likeCount: data.likeCount
+        likeCount: data.likeCount,
       });
     } catch (err) {
       console.error("Like failed, reverting:", err.message);
-      // Revert to the pre-click state
       applyPost(postId, {
         isLiked: target.isLiked,
-        likeCount: target.likeCount
+        likeCount: target.likeCount,
       });
     }
   };
 
-  const followingCount = posts.filter(
-    (post) => post.author.isFollowing
-  ).length;
-
   if (loading) {
-    return <div style={{ color: "#fff", padding: "40px" }}>Loading feed...</div>;
+    return (
+      <div data-page-shell style={pageShell()}>
+        <div style={pageContent({ maxWidth: 1180 })}>
+          <p style={styles.placeholder}>Loading feed…</p>
+        </div>
+      </div>
+    );
   }
 
+  const initial = (currentUserData.name || "U").charAt(0).toUpperCase();
+
   return (
-    <div style={styles.pageContainer}>
-      <div style={styles.contentWrapper}>
-        {/* MAIN FEED */}
-        <div style={styles.feed}>
-          <div style={styles.feedHeader}>
-            <h1 style={styles.feedTitle}>Home Feed</h1>
-            <p style={styles.feedSubtitle}>See what's happening with your connections</p>
-          </div>
-          
-          <CreatePost onCreate={handleCreatePost} />
+    <div data-page-shell style={pageShell()}>
+      <div style={pageContent({ maxWidth: 1180 })}>
+        <div style={styles.contentLayout}>
+          {/* Main feed column */}
+          <main style={styles.feed}>
+            <header style={styles.feedHeader}>
+              <h1 style={{ ...type.largeTitle, color: colors.text }}>Home</h1>
+              <p
+                style={{
+                  ...type.body,
+                  color: colors.textMuted,
+                  marginTop: spacing.sm,
+                }}
+              >
+                See what's happening with your connections.
+              </p>
+            </header>
 
-          {loading ? (
-            <div style={styles.loadingState}>Loading posts...</div>
-          ) : posts.length === 0 ? (
-            <div style={styles.emptyState}>
-              <h3>No posts yet</h3>
-              <p>Be the first to share something with the community!</p>
-            </div>
-          ) : (
-            <div style={styles.postsContainer}>
-              {posts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  currentUserId={currentUserData.uid}
-                  onFollowToggle={handleFollowToggle}
-                  onLikeToggle={handleLikeToggle}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+            <CreatePost onCreate={handleCreatePost} />
 
-        {/* RIGHT SIDEBAR */}
-        <div style={styles.sidebar}>
-          <div style={styles.profileCard}>
-            <div style={styles.avatar}>
-              {currentUserData.name.charAt(0).toUpperCase()}
-            </div>
-            <div style={styles.profileInfo}>
-              <h3 style={styles.profileName}>{currentUserData.name}</h3>
-              <p style={styles.profileHandle}>@{currentUserData.uid.slice(0, 6)}</p>
-            </div>
-            <div style={styles.profileStats}>
-              <div style={styles.stat}>
-                <span style={styles.statNumber}>{currentUserData.followers}</span>
-                <span style={styles.statLabel}>Followers</span>
+            {posts.length === 0 ? (
+              <div style={styles.emptyState}>
+                <h3 style={{ ...type.title3, color: colors.text, marginBottom: spacing.sm }}>
+                  No posts yet
+                </h3>
+                <p style={{ ...type.body, color: colors.textMuted }}>
+                  Be the first to share something with your community.
+                </p>
               </div>
-              <div style={styles.stat}>
-                <span style={styles.statNumber}>{currentUserData.following}</span>
-                <span style={styles.statLabel}>Following</span>
+            ) : (
+              <div style={styles.postsContainer}>
+                {posts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    currentUserId={currentUserData.uid}
+                    onLikeToggle={handleLikeToggle}
+                  />
+                ))}
+              </div>
+            )}
+          </main>
+
+          {/* Right sidebar — hides under 1024px via inline conditional */}
+          <aside style={styles.sidebar}>
+            <div style={styles.profileCard}>
+              <div style={styles.avatarRing}>
+                <div style={styles.avatar}>{initial}</div>
+              </div>
+              <div style={styles.profileInfo}>
+                <h3 style={{ ...type.title3, color: colors.text }}>
+                  {currentUserData.name || "User"}
+                </h3>
+                {currentUserData.uid && (
+                  <p style={{ ...type.footnote, color: colors.textFaint }}>
+                    @{currentUserData.uid.slice(0, 6)}
+                  </p>
+                )}
+              </div>
+              <div style={styles.profileStats}>
+                <Stat label="Followers" value={currentUserData.followers} />
+                <span style={styles.statsDivider} />
+                <Stat label="Following" value={currentUserData.following} />
               </div>
             </div>
-          </div>
 
-          <SuggestedUsers users={suggestedUsers} />
+            <SuggestedUsers users={suggestedUsers} />
+          </aside>
         </div>
       </div>
     </div>
   );
 };
 
+const Stat = ({ label, value }) => (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <span style={{ ...type.headline, color: colors.text }}>{value}</span>
+    <span
+      style={{
+        ...type.caption,
+        color: colors.textFaint,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        marginTop: "2px",
+      }}
+    >
+      {label}
+    </span>
+  </div>
+);
+
 const styles = {
-  pageContainer: {
-    marginLeft: "70px",
-    minHeight: "100vh",
-    backgroundColor: "#0a0a0a",
-    color: "#fff"
+  placeholder: {
+    ...type.body,
+    color: colors.textFaint,
+    padding: spacing["2xl"],
+    textAlign: "center",
   },
-  contentWrapper: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "30px",
-    padding: "30px",
-    maxWidth: "1200px",
-    margin: "0 auto"
+  contentLayout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 320px",
+    gap: spacing.xl,
+    alignItems: "start",
   },
   feed: {
-    flex: 1,
-    maxWidth: "650px"
+    minWidth: 0,
+    maxWidth: "640px",
+    margin: "0 auto",
+    width: "100%",
   },
   feedHeader: {
-    marginBottom: "30px",
-    padding: "20px 0"
-  },
-  feedTitle: {
-    fontSize: "32px",
-    fontWeight: "700",
-    marginBottom: "8px",
-    color: "#fff"
-  },
-  feedSubtitle: {
-    fontSize: "16px",
-    color: "#888",
-    lineHeight: "1.5"
-  },
-  loadingState: {
-    textAlign: "center",
-    padding: "40px",
-    color: "#aaa",
-    fontSize: "18px"
+    marginBottom: spacing.xl,
   },
   emptyState: {
+    ...glassCard({ padded: false }),
+    padding: spacing["2xl"],
     textAlign: "center",
-    padding: "60px 20px",
-    backgroundColor: "#1a1a1a",
-    borderRadius: "16px",
-    border: "1px solid #333"
-  },
-  "emptyState h3": {
-    fontSize: "24px",
-    marginBottom: "10px",
-    color: "#fff"
-  },
-  "emptyState p": {
-    color: "#888",
-    fontSize: "16px"
   },
   postsContainer: {
     display: "flex",
     flexDirection: "column",
-    gap: "20px"
   },
   sidebar: {
-    width: "320px",
     position: "sticky",
-    top: "30px",
-    height: "fit-content"
+    top: spacing.xl,
+    display: "flex",
+    flexDirection: "column",
   },
   profileCard: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: "16px",
-    padding: "24px",
-    marginBottom: "20px",
-    border: "1px solid #333",
+    ...glassCard({ padded: false }),
+    padding: spacing.xl,
+    marginBottom: spacing.xl,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    textAlign: "center"
+    textAlign: "center",
+  },
+  avatarRing: {
+    padding: "3px",
+    borderRadius: "50%",
+    background: gradients.brand,
+    marginBottom: spacing.md,
   },
   avatar: {
-    width: "80px",
-    height: "80px",
+    width: "72px",
+    height: "72px",
     borderRadius: "50%",
-    backgroundColor: "#3b82f6",
+    background: colors.surface,
+    color: colors.text,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "32px",
-    fontWeight: "700",
-    marginBottom: "16px"
+    fontSize: "28px",
+    fontWeight: 700,
   },
   profileInfo: {
-    marginBottom: "20px"
-  },
-  profileName: {
-    fontSize: "20px",
-    fontWeight: "600",
-    marginBottom: "4px",
-    color: "#fff"
-  },
-  profileHandle: {
-    fontSize: "14px",
-    color: "#888"
+    marginBottom: spacing.lg,
   },
   profileStats: {
     display: "flex",
-    gap: "30px",
+    alignItems: "center",
+    gap: spacing.lg,
     width: "100%",
-    justifyContent: "center"
+    justifyContent: "center",
+    padding: `${spacing.sm} 0 0`,
+    borderTop: `1px solid ${colors.glassBorder}`,
+    paddingTop: spacing.md,
   },
-  stat: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center"
+  statsDivider: {
+    width: "1px",
+    height: "26px",
+    background: colors.glassBorder,
   },
-  statNumber: {
-    fontSize: "18px",
-    fontWeight: "700",
-    color: "#fff"
-  },
-  statLabel: {
-    fontSize: "12px",
-    color: "#888",
-    marginTop: "2px"
-  }
 };
 
 export default HomeFeed;

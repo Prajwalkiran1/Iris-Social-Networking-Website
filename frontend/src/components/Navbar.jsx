@@ -1,59 +1,170 @@
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { FaHome, FaCompass, FaSearch, FaEnvelope, FaUser, FaSignOutAlt } from "react-icons/fa"
-import { useAuth } from "../contexts/AuthContext"
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  FiHome as Home,
+  FiCompass as Compass,
+  FiSearch as Search,
+  FiMessageCircle as MessageCircle,
+  FiUser as User,
+  FiLogOut as LogOut,
+} from "react-icons/fi";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  colors,
+  spacing,
+  radius,
+  type,
+  gradients,
+  transition,
+} from "../theme";
+
+// Tiny matchMedia hook so we can swap to a bottom tab bar under 768px.
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 768px)").matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener?.("change", handler);
+    return () => mq.removeEventListener?.("change", handler);
+  }, []);
+  return isMobile;
+};
+
+const ITEMS = [
+  { to: "/home", label: "Home", Icon: Home },
+  { to: "/explore", label: "Explore", Icon: Compass },
+  { to: "/search", label: "Search", Icon: Search },
+  { to: "/chat", label: "Messages", Icon: MessageCircle },
+  { to: "/profile", label: "Profile", Icon: User },
+];
 
 const Navbar = () => {
-  const [expanded, setExpanded] = useState(false)
-  const navigate = useNavigate()
-  const { currentUser, logout } = useAuth()
+  const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { logout } = useAuth();
+  const isMobile = useIsMobile();
 
   const handleLogout = async () => {
-    await logout()
-    navigate("/")
+    await logout();
+    navigate("/");
+  };
+
+  const isActive = (to) =>
+    location.pathname === to ||
+    (to !== "/home" && location.pathname.startsWith(to));
+
+  // ---------- Mobile: bottom tab bar ----------
+  if (isMobile) {
+    return (
+      <nav style={styles.mobileBar}>
+        {ITEMS.map(({ to, label, Icon }) => {
+          const active = isActive(to);
+          return (
+            <button
+              key={to}
+              type="button"
+              onClick={() => navigate(to)}
+              aria-label={label}
+              aria-current={active ? "page" : undefined}
+              style={{
+                ...styles.mobileTab,
+                color: active ? colors.text : colors.textFaint,
+              }}
+            >
+              <Icon size={22} />
+              <span style={styles.mobileTabLabel}>{label}</span>
+              {active && <span style={styles.mobileActiveDot} />}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={handleLogout}
+          aria-label="Logout"
+          style={{ ...styles.mobileTab, color: colors.textFaint }}
+        >
+          <LogOut size={22} />
+          <span style={styles.mobileTabLabel}>Logout</span>
+        </button>
+      </nav>
+    );
   }
 
+  // ---------- Desktop: collapsible glass sidebar ----------
   return (
-    <div
+    <nav
       style={styles.sidebar(expanded)}
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
     >
-      <h2 style={styles.logo(expanded)}>Iris</h2>
+      <h2 style={styles.logo(expanded)}>{expanded ? "Iris" : "I"}</h2>
 
-      <NavItem icon={<FaHome />} label="Home" expanded={expanded} onClick={() => navigate("/home")} />
-      <NavItem icon={<FaCompass />} label="Explore" expanded={expanded} onClick={() => navigate("/explore")} />
-      <NavItem icon={<FaSearch />} label="Search" expanded={expanded} onClick={() => navigate("/search")} />
-      <NavItem icon={<FaEnvelope />} label="Messages" expanded={expanded} onClick={() => navigate("/chat")} />
-      <NavItem icon={<FaUser />} label="Profile" expanded={expanded} onClick={() => navigate("/profile")} />
-      
-      <div style={{ marginTop: "20px" }}>
-        <NavItem icon={<FaSignOutAlt />} label="Logout" expanded={expanded} onClick={handleLogout} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        {ITEMS.map((item) => (
+          <NavItem
+            key={item.to}
+            {...item}
+            expanded={expanded}
+            active={isActive(item.to)}
+            onClick={() => navigate(item.to)}
+          />
+        ))}
       </div>
 
-    </div>
-  )
-}
+      <div style={{ marginTop: "auto" }}>
+        <NavItem
+          to="logout"
+          Icon={LogOut}
+          label="Logout"
+          expanded={expanded}
+          active={false}
+          onClick={handleLogout}
+        />
+      </div>
+    </nav>
+  );
+};
 
-const NavItem = ({ icon, label, expanded, onClick }) => {
+const NavItem = ({ Icon, label, expanded, active, onClick }) => {
+  const [hover, setHover] = useState(false);
+
+  const background = active
+    ? colors.glassBgStrong
+    : hover
+    ? colors.glassBg
+    : "transparent";
+  const color = active || hover ? colors.text : colors.textMuted;
+
   return (
-    <div 
-      style={styles.navItem} 
+    <button
+      type="button"
       onClick={onClick}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = "#2a2a2a";
-        e.currentTarget.style.color = "#fff";
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...styles.navItem,
+        background,
+        color,
+        justifyContent: expanded ? "flex-start" : "center",
       }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "transparent";
-        e.currentTarget.style.color = "#aaa";
-      }}
+      aria-current={active ? "page" : undefined}
     >
-      <div style={styles.icon}>{icon}</div>
-      {expanded && <span style={{ color: "#fff" }}>{label}</span>}
-    </div>
-  )
-}
+      {active && <span style={styles.activeIndicator} />}
+      <Icon size={20} />
+      {expanded && (
+        <span style={{ ...type.callout, color: "inherit", fontWeight: active ? 600 : 500 }}>
+          {label}
+        </span>
+      )}
+    </button>
+  );
+};
 
 const styles = {
   sidebar: (expanded) => ({
@@ -61,48 +172,108 @@ const styles = {
     left: 0,
     top: 0,
     height: "100vh",
-    width: expanded ? "200px" : "70px",
-    background: "linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)",
-    borderRight: "2px solid #333",
-    padding: "20px 10px",
+    width: expanded ? "210px" : "70px",
+    background: "rgba(10,10,10,0.65)",
+    backdropFilter: "blur(28px) saturate(180%)",
+    WebkitBackdropFilter: "blur(28px) saturate(180%)",
+    borderRight: `1px solid ${colors.glassBorder}`,
+    padding: `${spacing.xl} ${spacing.md}`,
     display: "flex",
     flexDirection: "column",
-    gap: "25px",
-    transition: "all 0.3s ease",
+    gap: spacing.lg,
+    transition: transition(["width", "background"]),
     zIndex: 1000,
-    boxShadow: "4px 0 20px rgba(0, 0, 0, 0.3)"
+    boxShadow: "8px 0 32px rgba(0,0,0,0.45)",
+    boxSizing: "border-box",
   }),
 
   logo: (expanded) => ({
-    color: "#fff",
-    fontSize: expanded ? "24px" : "18px",
-    fontWeight: "700",
-    marginBottom: "30px",
+    ...type.title1,
+    fontSize: expanded ? "26px" : "22px",
+    fontWeight: 800,
     textAlign: "center",
-    background: "linear-gradient(45deg, #3b82f6, #8b5cf6)",
+    marginBottom: spacing.lg,
+    background: gradients.brand,
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
-    backgroundClip: "text"
+    backgroundClip: "text",
+    letterSpacing: "-0.02em",
+    transition: transition(["font-size"]),
   }),
 
   navItem: {
+    position: "relative",
     display: "flex",
     alignItems: "center",
-    gap: "15px",
+    gap: spacing.md,
     cursor: "pointer",
-    fontSize: "16px",
-    padding: "12px 8px",
-    borderRadius: "8px",
-    transition: "all 0.2s ease",
-    color: "#aaa",
-    textDecoration: "none"
+    border: "none",
+    width: "100%",
+    padding: `${spacing.md} ${spacing.md}`,
+    borderRadius: radius.md,
+    transition: transition(["background", "color"]),
+    textAlign: "left",
+    fontFamily: "inherit",
   },
 
-  icon: {
-    fontSize: "20px",
-    width: "25px",
-    color: "#fff"
-  }
-}
+  activeIndicator: {
+    position: "absolute",
+    left: 0,
+    top: "20%",
+    bottom: "20%",
+    width: "3px",
+    borderRadius: "2px",
+    background: gradients.brand,
+    boxShadow: "0 0 12px rgba(59,130,246,0.55)",
+  },
 
-export default Navbar
+  // --- Mobile bottom tab bar ---
+  mobileBar: {
+    position: "fixed",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "72px",
+    paddingBottom: "env(safe-area-inset-bottom, 0)",
+    background: "rgba(10,10,10,0.72)",
+    backdropFilter: "blur(28px) saturate(180%)",
+    WebkitBackdropFilter: "blur(28px) saturate(180%)",
+    borderTop: `1px solid ${colors.glassBorder}`,
+    display: "flex",
+    alignItems: "stretch",
+    justifyContent: "space-around",
+    zIndex: 1000,
+    boxShadow: "0 -8px 28px rgba(0,0,0,0.5)",
+  },
+  mobileTab: {
+    flex: 1,
+    background: "transparent",
+    border: "none",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "3px",
+    cursor: "pointer",
+    position: "relative",
+    transition: transition(["color"]),
+    padding: 0,
+    fontFamily: "inherit",
+  },
+  mobileTabLabel: {
+    fontSize: "10px",
+    fontWeight: 500,
+    letterSpacing: "0.01em",
+  },
+  mobileActiveDot: {
+    position: "absolute",
+    top: "6px",
+    width: "4px",
+    height: "4px",
+    borderRadius: "50%",
+    background: colors.primary,
+    boxShadow: "0 0 8px rgba(59,130,246,0.6)",
+  },
+};
+
+export default Navbar;

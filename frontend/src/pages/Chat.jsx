@@ -1,10 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import {
+  FiSearch as SearchIcon,
+  FiSend as Send,
+  FiMessageCircle as MessageCircle,
+  FiPlus as Plus,
+} from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
+import {
+  colors,
+  spacing,
+  radius,
+  type,
+  font,
+  gradients,
+  transition,
+  glassCard,
+  tag,
+} from "../theme";
 
 const MESSAGE_POLL_MS = 3000;
 const CONVERSATIONS_POLL_MS = 10000;
+
+const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
 
 const formatConversations = (data) =>
   (Array.isArray(data) ? data : []).map((conv) => ({
@@ -46,6 +65,12 @@ const Chat = () => {
   useEffect(() => {
     selectedChatRef.current = selectedChat;
   }, [selectedChat]);
+
+  // Auto-scroll the messages container to the bottom on new messages.
+  const messagesEndRef = useRef(null);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -185,341 +210,520 @@ const Chat = () => {
 
   if (loading) {
     return (
-      <div style={styles.container}>
-        <div style={styles.loading}>Loading conversations...</div>
+      <div data-page-shell style={styles.shell}>
+        <div style={styles.placeholder}>Loading conversations…</div>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.chatLayout}>
-        {/* Conversations List */}
-        <div style={styles.conversationsList}>
-          <div style={styles.listHeader}>
-            <h2>Messages</h2>
-          </div>
-          
-          <div style={styles.conversations}>
-            {conversations.map(conversation => (
-              <div
-                key={conversation.id}
-                style={{
-                  ...styles.conversationItem,
-                  backgroundColor: selectedChat?.id === conversation.id ? "#2a2a2a" : "transparent"
-                }}
-                onClick={() => selectChat(conversation)}
-              >
-                <div style={styles.conversationInfo}>
-                  <div style={styles.conversationName}>{conversation.user.name}</div>
-                  <div style={styles.lastMessage}>{conversation.lastMessage}</div>
-                </div>
-                <div style={styles.timestamp}>
-                  {new Date(conversation.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-            ))}
+    <div data-page-shell style={styles.shell}>
+      <div style={styles.layout}>
+        {/* ---------- Left: Conversations + new chat ---------- */}
+        <aside style={styles.leftPanel}>
+          <div style={styles.leftHeader}>
+            <h2 style={{ ...type.title2, color: colors.text }}>Messages</h2>
           </div>
 
-          <div style={styles.newChatSection}>
-            <h3 style={styles.sectionTitle}>Start New Chat</h3>
+          {/* Search bar */}
+          <div style={styles.searchField}>
+            <SearchIcon
+              size={16}
+              color={colors.textFaint}
+              style={styles.searchIcon}
+            />
             <input
               type="text"
-              placeholder="Search users by name or interests..."
+              placeholder="Search people…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={styles.searchInput}
             />
-            <div style={styles.usersList}>
-              {filteredUsers.slice(0, 10).map(user => (
-                <div
-                  key={user.uid}
-                  style={styles.userItem}
+          </div>
+
+          {/* Existing conversations */}
+          <div style={styles.scrollable}>
+            {conversations.length > 0 && (
+              <div style={styles.sectionLabel}>Conversations</div>
+            )}
+            {conversations.map((conversation) => {
+              const isActive = selectedChat?.id === conversation.id;
+              return (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => selectChat(conversation)}
+                  style={{
+                    ...styles.conversationItem,
+                    background: isActive
+                      ? colors.glassBgStrong
+                      : "transparent",
+                    borderColor: isActive
+                      ? colors.glassBorder
+                      : "transparent",
+                  }}
                 >
-                  <div style={styles.userInfo}>
-                    <div style={styles.userName}>{user.name}</div>
-                    {user.interests && user.interests.length > 0 && (
-                      <div style={styles.userInterests}>
-                        {user.interests.slice(0, 2).map((interest, i) => (
-                          <span key={i} style={styles.interestTag}>
-                            {interest}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                  <div style={styles.smallAvatar}>
+                    {initialOf(conversation.user.name)}
                   </div>
-                  <button style={styles.startChatButton} onClick={(e) => {
+                  <div style={styles.conversationText}>
+                    <div style={styles.conversationName}>
+                      {conversation.user.name}
+                    </div>
+                    <div style={styles.lastMessage}>
+                      {conversation.lastMessage}
+                    </div>
+                  </div>
+                  <div style={styles.timestamp}>
+                    {new Date(conversation.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* Start-a-new-chat user list */}
+            <div style={styles.sectionLabel}>Start new chat</div>
+            {filteredUsers.slice(0, 12).map((user) => (
+              <div key={user.uid} style={styles.userItem}>
+                <div style={styles.smallAvatar}>{initialOf(user.name)}</div>
+                <div style={styles.userTextWrap}>
+                  <div style={styles.userName}>{user.name}</div>
+                  {user.interests && user.interests.length > 0 && (
+                    <div style={styles.userTags}>
+                      {user.interests.slice(0, 2).map((interest, i) => (
+                        <span key={i} style={tag({ tone: "neutral" })}>
+                          {interest}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     startConversation(user);
-                  }}>
-                    Chat
-                  </button>
-                </div>
-              ))}
-              {filteredUsers.length === 0 && searchTerm && (
-                <div style={styles.noUsersFound}>
-                  No users found matching "{searchTerm}"
-                </div>
-              )}
-            </div>
+                  }}
+                  style={styles.startChatButton}
+                  aria-label={`Start chat with ${user.name}`}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            ))}
+            {filteredUsers.length === 0 && searchTerm && (
+              <div style={styles.noUsersFound}>
+                No users found matching "{searchTerm}"
+              </div>
+            )}
           </div>
-        </div>
+        </aside>
 
-        {/* Chat Area */}
-        <div style={styles.chatArea}>
+        {/* ---------- Right: Active chat ---------- */}
+        <main style={styles.chatPanel}>
           {selectedChat ? (
             <>
-              <div style={styles.chatHeader}>
-                <div style={styles.chatUserInfo}>
-                  <h3>{selectedChat.user.name}</h3>
-                  <p style={styles.chatStatus}>Online</p>
+              <header style={styles.chatHeader}>
+                <div style={styles.smallAvatar}>
+                  {initialOf(selectedChat.user.name)}
                 </div>
-              </div>
+                <div>
+                  <div style={{ ...type.headline, color: colors.text }}>
+                    {selectedChat.user.name}
+                  </div>
+                  <div style={styles.statusRow}>
+                    <span style={styles.statusDot} />
+                    <span style={{ ...type.caption, color: colors.textFaint }}>
+                      Active now
+                    </span>
+                  </div>
+                </div>
+              </header>
 
               <div style={styles.messagesContainer}>
-                {messages.map(message => (
-                  <div
-                    key={message.id}
-                    style={{
-                      ...styles.message,
-                      alignSelf: message.senderId === currentUser.uid ? 'flex-end' : 'flex-start',
-                      backgroundColor: message.senderId === currentUser.uid ? '#3b82f6' : '#2a2a2a'
-                    }}
-                  >
-                    <div style={styles.messageText}>{message.text}</div>
-                    <div style={styles.messageTime}>
-                      {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {messages.map((message) => {
+                  const own = message.senderId === currentUser.uid;
+                  return (
+                    <div
+                      key={message.id}
+                      style={{
+                        ...styles.messageRow,
+                        justifyContent: own ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          ...styles.bubble,
+                          background: own
+                            ? gradients.brand
+                            : colors.glassBgStrong,
+                          color: colors.text,
+                          borderBottomRightRadius: own ? "6px" : radius.lg,
+                          borderBottomLeftRadius: own ? radius.lg : "6px",
+                          border: own
+                            ? "1px solid rgba(255,255,255,0.10)"
+                            : `1px solid ${colors.glassBorder}`,
+                          backdropFilter: own ? "none" : "blur(18px) saturate(160%)",
+                          WebkitBackdropFilter: own
+                            ? "none"
+                            : "blur(18px) saturate(160%)",
+                        }}
+                      >
+                        <div style={styles.messageText}>{message.text}</div>
+                        <div
+                          style={{
+                            ...styles.messageTime,
+                            color: own
+                              ? "rgba(255,255,255,0.75)"
+                              : colors.textFaint,
+                          }}
+                        >
+                          {new Date(message.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+                <div ref={messagesEndRef} />
               </div>
 
-              <div style={styles.messageInput}>
+              <div style={styles.messageInputWrap}>
                 <input
                   type="text"
-                  placeholder="Type a message..."
+                  placeholder="Type a message…"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                  style={styles.input}
+                  onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                  style={styles.messageInput}
                 />
-                <button onClick={sendMessage} style={styles.sendButton}>
-                  Send
+                <button
+                  type="button"
+                  onClick={sendMessage}
+                  disabled={!newMessage.trim()}
+                  style={{
+                    ...styles.sendButton,
+                    opacity: !newMessage.trim() ? 0.6 : 1,
+                    cursor: !newMessage.trim() ? "not-allowed" : "pointer",
+                  }}
+                  aria-label="Send message"
+                >
+                  <Send size={17} />
                 </button>
               </div>
             </>
           ) : (
             <div style={styles.emptyChat}>
-              <h3>Select a conversation to start messaging</h3>
-              <p>Choose from your existing conversations or start a new one</p>
+              <div style={styles.emptyIconWrap}>
+                <MessageCircle size={28} />
+              </div>
+              <h3 style={{ ...type.title3, color: colors.text }}>
+                Select a conversation
+              </h3>
+              <p style={{ ...type.body, color: colors.textMuted, marginTop: spacing.sm }}>
+                Choose from your existing conversations, or start a new one.
+              </p>
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );
 };
 
 const styles = {
-  container: {
+  shell: {
     marginLeft: "70px",
     height: "100vh",
-    backgroundColor: "#0a0a0a",
-    color: "#fff"
+    minHeight: "100vh",
+    padding: spacing.lg,
+    boxSizing: "border-box",
   },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+  placeholder: {
+    ...type.body,
+    color: colors.textFaint,
+    textAlign: "center",
+    padding: spacing["2xl"],
+  },
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "340px minmax(0, 1fr)",
+    gap: spacing.lg,
     height: "100%",
-    fontSize: "18px",
-    color: "#aaa"
   },
-  chatLayout: {
-    display: "flex",
-    height: "100%"
-  },
-  conversationsList: {
-    width: "350px",
-    borderRight: "1px solid #333",
-    display: "flex",
-    flexDirection: "column"
-  },
-  listHeader: {
-    padding: "20px",
-    borderBottom: "1px solid #333"
-  },
-  conversations: {
-    flex: 1,
-    overflowY: "auto"
-  },
-  conversationItem: {
-    padding: "15px 20px",
-    borderBottom: "1px solid #333",
-    cursor: "pointer",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    transition: "background-color 0.2s"
-  },
-  conversationInfo: {
-    flex: 1
-  },
-  conversationName: {
-    fontWeight: "500",
-    marginBottom: "5px"
-  },
-  lastMessage: {
-    fontSize: "14px",
-    color: "#aaa",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap"
-  },
-  timestamp: {
-    fontSize: "12px",
-    color: "#666"
-  },
-  newChatSection: {
-    padding: "20px",
-    borderTop: "1px solid #333"
-  },
-  sectionTitle: {
-    fontSize: "14px",
-    fontWeight: "500",
-    marginBottom: "10px",
-    color: "#aaa"
-  },
-  usersList: {
+
+  // --- Left panel ---
+  leftPanel: {
+    ...glassCard({ padded: false }),
+    padding: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "8px"
+    overflow: "hidden",
   },
-  userItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "8px",
-    borderRadius: "6px",
-    cursor: "pointer"
+  leftHeader: {
+    padding: `${spacing.lg} ${spacing.lg} ${spacing.md}`,
   },
-  userName: {
-    fontSize: "14px"
+  searchField: {
+    position: "relative",
+    margin: `0 ${spacing.lg} ${spacing.md}`,
   },
-  userInfo: {
-    flex: 1,
-    marginRight: "10px"
-  },
-  userInterests: {
-    display: "flex",
-    gap: "4px",
-    marginTop: "4px"
-  },
-  interestTag: {
-    padding: "2px 6px",
-    backgroundColor: "#333",
-    borderRadius: "10px",
-    fontSize: "10px",
-    color: "#aaa"
+  searchIcon: {
+    position: "absolute",
+    left: spacing.md,
+    top: "50%",
+    transform: "translateY(-50%)",
+    pointerEvents: "none",
   },
   searchInput: {
     width: "100%",
-    padding: "10px",
-    border: "1px solid #333",
-    borderRadius: "6px",
-    backgroundColor: "#1a1a1a",
-    color: "#fff",
-    fontSize: "14px",
-    marginBottom: "10px"
+    padding: `${spacing.sm} ${spacing.sm} ${spacing.sm} 38px`,
+    background: colors.input,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    fontSize: "13px",
+    fontFamily: font.family,
+    outline: "none",
+    boxSizing: "border-box",
+    transition: transition(["border-color"]),
   },
-  noUsersFound: {
-    padding: "20px",
-    textAlign: "center",
-    color: "#666",
-    fontSize: "14px"
+  scrollable: {
+    flex: 1,
+    overflowY: "auto",
+    padding: `0 ${spacing.sm} ${spacing.md}`,
+  },
+  sectionLabel: {
+    ...type.caption,
+    color: colors.textFaint,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    padding: `${spacing.md} ${spacing.sm} ${spacing.xs}`,
+  },
+  conversationItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: `${spacing.sm} ${spacing.md}`,
+    width: "100%",
+    border: "1px solid transparent",
+    borderRadius: radius.md,
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: "inherit",
+    transition: transition(["background", "border-color"]),
+    marginBottom: "2px",
+  },
+  conversationText: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+  },
+  conversationName: {
+    ...type.callout,
+    color: colors.text,
+    fontWeight: 600,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  lastMessage: {
+    ...type.footnote,
+    color: colors.textFaint,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    marginTop: "2px",
+  },
+  timestamp: {
+    ...type.caption,
+    color: colors.textFaint,
+    flexShrink: 0,
+  },
+  userItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: `${spacing.sm} ${spacing.md}`,
+    borderRadius: radius.md,
+    transition: transition(["background"]),
+    marginBottom: "2px",
+  },
+  userTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  userName: {
+    ...type.callout,
+    color: colors.text,
+    fontWeight: 500,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  userTags: {
+    display: "flex",
+    gap: "4px",
+    marginTop: "4px",
+    flexWrap: "wrap",
   },
   startChatButton: {
-    padding: "4px 8px",
-    backgroundColor: "#3b82f6",
-    color: "#fff",
-    border: "none",
-    borderRadius: "4px",
-    fontSize: "12px",
-    cursor: "pointer"
+    width: "30px",
+    height: "30px",
+    borderRadius: "50%",
+    background: colors.primarySoft,
+    border: `1px solid ${colors.primaryBorder}`,
+    color: colors.primary,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    transition: transition(["background", "transform"]),
+    flexShrink: 0,
   },
-  chatArea: {
-    flex: 1,
+  noUsersFound: {
+    padding: spacing.lg,
+    textAlign: "center",
+    color: colors.textFaint,
+    ...type.footnote,
+  },
+
+  // --- Right panel ---
+  chatPanel: {
+    ...glassCard({ padded: false }),
+    padding: 0,
     display: "flex",
-    flexDirection: "column"
+    flexDirection: "column",
+    overflow: "hidden",
   },
   chatHeader: {
-    padding: "20px",
-    borderBottom: "1px solid #333"
-  },
-  chatUserInfo: {
     display: "flex",
-    flexDirection: "column"
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderBottom: `1px solid ${colors.glassBorder}`,
   },
-  chatStatus: {
-    fontSize: "14px",
-    color: "#22c55e",
-    marginTop: "5px"
+  statusRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "2px",
+  },
+  statusDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "50%",
+    background: colors.success,
+    boxShadow: "0 0 8px rgba(34,197,94,0.6)",
   },
   messagesContainer: {
     flex: 1,
-    padding: "20px",
     overflowY: "auto",
+    padding: spacing.xl,
     display: "flex",
     flexDirection: "column",
-    gap: "10px"
+    gap: spacing.sm,
   },
-  message: {
-    maxWidth: "70%",
-    padding: "12px 16px",
-    borderRadius: "16px",
+  messageRow: {
     display: "flex",
-    flexDirection: "column"
+    width: "100%",
+  },
+  bubble: {
+    maxWidth: "72%",
+    padding: `${spacing.sm} ${spacing.md}`,
+    borderRadius: radius.lg,
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    animation: "iris-slide-in 200ms ease-out",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.28)",
   },
   messageText: {
-    marginBottom: "5px"
+    ...type.body,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
   },
   messageTime: {
-    fontSize: "12px",
-    opacity: 0.7
+    ...type.caption,
+    alignSelf: "flex-end",
+  },
+  messageInputWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderTop: `1px solid ${colors.glassBorder}`,
   },
   messageInput: {
-    padding: "20px",
-    borderTop: "1px solid #333",
-    display: "flex",
-    gap: "10px"
-  },
-  input: {
     flex: 1,
-    padding: "12px",
-    backgroundColor: "#2a2a2a",
-    border: "1px solid #333",
-    borderRadius: "24px",
-    color: "#fff",
-    fontSize: "16px"
+    padding: `${spacing.md} ${spacing.lg}`,
+    background: colors.input,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.pill,
+    fontSize: "15px",
+    fontFamily: font.family,
+    outline: "none",
+    transition: transition(["border-color", "background"]),
+    boxSizing: "border-box",
   },
   sendButton: {
-    padding: "12px 24px",
-    backgroundColor: "#3b82f6",
-    color: "#fff",
-    border: "none",
-    borderRadius: "24px",
-    cursor: "pointer",
-    fontWeight: "500"
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    background: gradients.brand,
+    color: colors.text,
+    border: "1px solid rgba(255,255,255,0.10)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    transition: transition(["transform", "opacity", "box-shadow"]),
+    boxShadow: "0 6px 18px rgba(59,130,246,0.32)",
   },
+
+  // --- Empty state ---
   emptyChat: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    color: "#666"
-  }
+    padding: spacing["2xl"],
+    textAlign: "center",
+  },
+  emptyIconWrap: {
+    width: "64px",
+    height: "64px",
+    borderRadius: "50%",
+    background: colors.primarySoft,
+    border: `1px solid ${colors.primaryBorder}`,
+    color: colors.primary,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+  },
+
+  // --- Reusable avatar ---
+  smallAvatar: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    background: gradients.brand,
+    color: colors.text,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 700,
+    fontSize: "14px",
+    flexShrink: 0,
+  },
 };
 
 export default Chat;

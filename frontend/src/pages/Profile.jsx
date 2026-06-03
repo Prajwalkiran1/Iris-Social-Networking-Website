@@ -1,23 +1,42 @@
 import React, { useState, useEffect } from "react";
+import {
+  FiEdit2 as Pencil,
+  FiX as X,
+  FiCheck as Check,
+  FiChevronDown as ChevronDown,
+  FiChevronUp as ChevronUp,
+} from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet, apiPut } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
 import FollowButton from "../components/FollowButton";
+import {
+  colors,
+  spacing,
+  radius,
+  type,
+  font,
+  button,
+  glassCard,
+  tag,
+  gradients,
+  transition,
+  pageShell,
+  pageContent,
+} from "../theme";
 
 const PREDEFINED_INTERESTS = [
   "Photography", "Travel", "Music", "Gaming", "Fitness",
   "Cooking", "Art", "Technology", "Reading", "Fashion",
-  "Sports", "Movies", "Nature", "Writing", "Dancing"
+  "Sports", "Movies", "Nature", "Writing", "Dancing",
 ];
+
+const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "U");
 
 const Profile = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState({
-    name: "",
-    bio: "",
-    interests: []
-  });
+  const [profile, setProfile] = useState({ name: "", bio: "", interests: [] });
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -32,6 +51,7 @@ const Profile = () => {
     } else {
       navigate("/");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, navigate]);
 
   const loadProfile = async () => {
@@ -42,11 +62,9 @@ const Profile = () => {
       setProfile({
         name: currentUser.displayName || "User",
         bio: "",
-        interests: []
+        interests: [],
       });
     }
-
-    // Load followers and following lists
     await loadFollowersAndFollowing();
     setLoading(false);
   };
@@ -77,388 +95,425 @@ const Profile = () => {
   };
 
   const toggleInterest = (interest) => {
-    setProfile(prev => ({
+    setProfile((prev) => ({
       ...prev,
       interests: prev.interests.includes(interest)
-        ? prev.interests.filter(i => i !== interest)
-        : [...prev.interests, interest]
+        ? prev.interests.filter((i) => i !== interest)
+        : [...prev.interests, interest],
     }));
   };
 
   if (loading) {
     return (
-      <div style={styles.container}>
-        <div style={styles.loading}>Loading profile...</div>
+      <div data-page-shell style={pageShell()}>
+        <div style={pageContent({ maxWidth: 820 })}>
+          <p style={styles.placeholder}>Loading profile…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.profileCard}>
-        <div style={styles.header}>
-          <div style={styles.avatar}>
-            {currentUser?.displayName?.charAt(0)?.toUpperCase() || "U"}
-          </div>
-          <div style={styles.userInfo}>
-            <h1 style={styles.name}>{profile.name}</h1>
-            <p style={styles.email}>{currentUser?.email}</p>
-          </div>
-          <button
-            style={styles.editButton}
-            onClick={() => setEditing(!editing)}
-          >
-            {editing ? "Cancel" : "Edit Profile"}
-          </button>
-        </div>
-
-        {editing ? (
-          <form style={styles.editForm} onSubmit={(e) => {
-            e.preventDefault();
-            saveProfile();
-          }}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Name</label>
-              <input
-                type="text"
-                value={profile.name}
-                onChange={(e) => setProfile(prev => ({ ...prev, name: e.target.value }))}
-                style={styles.input}
-              />
-            </div>
-            
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Bio</label>
-              <textarea
-                value={profile.bio}
-                onChange={(e) => setProfile(prev => ({ ...prev, bio: e.target.value }))}
-                style={styles.textarea}
-                placeholder="Tell us about yourself..."
-              />
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Interests</label>
-              <div style={styles.interestsGrid}>
-                {PREDEFINED_INTERESTS.map(interest => (
-                  <button
-                    key={interest}
-                    type="button"
-                    style={{
-                      ...styles.interestButton,
-                      backgroundColor: profile.interests.includes(interest) ? "#3b82f6" : "#2a2a2a",
-                      color: profile.interests.includes(interest) ? "#fff" : "#aaa"
-                    }}
-                    onClick={() => toggleInterest(interest)}
-                  >
-                    {interest}
-                  </button>
-                ))}
+    <div data-page-shell style={pageShell()}>
+      <div style={pageContent({ maxWidth: 820 })}>
+        <section
+          style={{
+            ...glassCard({ padded: false }),
+            padding: spacing["2xl"],
+            marginBottom: spacing.xl,
+          }}
+        >
+          <header style={styles.header}>
+            <div style={styles.avatarWrap}>
+              <div style={styles.avatar}>
+                {initialOf(profile.name || currentUser?.displayName)}
               </div>
             </div>
-
+            <div style={styles.headerInfo}>
+              <h1 style={{ ...type.title1, color: colors.text }}>
+                {profile.name || "Your name"}
+              </h1>
+              <p style={{ ...type.footnote, color: colors.textFaint, marginTop: "4px" }}>
+                {currentUser?.email}
+              </p>
+              <div style={styles.statsRow}>
+                <Stat label="Followers" value={followers.length} />
+                <span style={styles.statsDivider} />
+                <Stat label="Following" value={following.length} />
+                <span style={styles.statsDivider} />
+                <Stat label="Interests" value={profile.interests.length} />
+              </div>
+            </div>
             <button
-              type="submit"
-              style={styles.saveButton}
-              disabled={saving}
+              type="button"
+              onClick={() => setEditing((v) => !v)}
+              style={button(editing ? "ghost" : "secondary", { size: "sm" })}
             >
-              {saving ? "Saving..." : "Save Profile"}
+              {editing ? <X size={14} /> : <Pencil size={14} />}
+              {editing ? "Cancel" : "Edit"}
             </button>
-          </form>
-        ) : (
-          <div style={styles.profileContent}>
-            {profile.bio && (
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>Bio</h3>
-                <p style={styles.bio}>{profile.bio}</p>
-              </div>
-            )}
+          </header>
 
-            {profile.interests.length > 0 && (
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>Interests</h3>
-                <div style={styles.interestsList}>
-                  {profile.interests.map(interest => (
-                    <span key={interest} style={styles.interestTag}>
-                      {interest}
-                    </span>
-                  ))}
+          {editing ? (
+            <form
+              style={styles.editForm}
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveProfile();
+              }}
+            >
+              <Field label="Name">
+                <input
+                  type="text"
+                  value={profile.name}
+                  onChange={(e) =>
+                    setProfile((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  style={styles.input}
+                />
+              </Field>
+
+              <Field label="Bio">
+                <textarea
+                  value={profile.bio}
+                  onChange={(e) =>
+                    setProfile((prev) => ({ ...prev, bio: e.target.value }))
+                  }
+                  style={styles.textarea}
+                  placeholder="Tell us about yourself…"
+                  rows={3}
+                />
+              </Field>
+
+              <Field label="Interests">
+                <div style={styles.interestsGrid}>
+                  {PREDEFINED_INTERESTS.map((interest) => {
+                    const selected = profile.interests.includes(interest);
+                    return (
+                      <button
+                        key={interest}
+                        type="button"
+                        onClick={() => toggleInterest(interest)}
+                        style={{
+                          ...styles.interestPill,
+                          background: selected
+                            ? colors.primarySoft
+                            : colors.glassBg,
+                          color: selected ? colors.text : colors.textMuted,
+                          borderColor: selected
+                            ? colors.primaryBorder
+                            : colors.glassBorder,
+                        }}
+                      >
+                        {selected && <Check size={12} />}
+                        {interest}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
+              </Field>
 
-            {/* Followers Section */}
-            <div style={styles.section}>
-              <div style={styles.sectionHeader}>
-                <h3 style={styles.sectionTitle}>Followers ({followers.length})</h3>
-                <button 
-                  style={styles.toggleButton}
-                  onClick={() => setShowFollowers(!showFollowers)}
-                >
-                  {showFollowers ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {showFollowers && (
-                <div style={styles.usersList}>
-                  {followers.length > 0 ? (
-                    followers.map(user => (
-                      <div key={user.uid} style={styles.userItem}>
-                        <div style={styles.userInfo}>
-                          <div style={styles.userName}>{user.name}</div>
-                          <div style={styles.userEmail}>{user.email}</div>
-                        </div>
-                        <FollowButton
-                          targetUserId={user.uid}
-                          currentUserId={currentUser.uid}
-                        />
-                      </div>
-                    ))
-                  ) : (
-                    <div style={styles.emptyState}>No followers yet</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Following Section */}
-            <div style={styles.section}>
-              <div style={styles.sectionHeader}>
-                <h3 style={styles.sectionTitle}>Following ({following.length})</h3>
-                <button 
-                  style={styles.toggleButton}
-                  onClick={() => setShowFollowing(!showFollowing)}
-                >
-                  {showFollowing ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {showFollowing && (
-                <div style={styles.usersList}>
-                  {following.length > 0 ? (
-                    following.map(user => (
-                      <div key={user.uid} style={styles.userItem}>
-                        <div style={styles.userInfo}>
-                          <div style={styles.userName}>{user.name}</div>
-                          <div style={styles.userEmail}>{user.email}</div>
-                        </div>
-                        <FollowButton
-                          targetUserId={user.uid}
-                          currentUserId={currentUser.uid}
-                        />
-                      </div>
-                    ))
-                  ) : (
-                    <div style={styles.emptyState}>Not following anyone yet</div>
-                  )}
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  ...button("primary", { size: "md" }),
+                  alignSelf: "flex-start",
+                  marginTop: spacing.sm,
+                  opacity: saving ? 0.7 : 1,
+                  cursor: saving ? "not-allowed" : "pointer",
+                }}
+              >
+                {saving ? "Saving…" : "Save Profile"}
+              </button>
+            </form>
+          ) : (
+            <>
+              {profile.bio && (
+                <div style={styles.section}>
+                  <h3 style={styles.sectionTitle}>Bio</h3>
+                  <p style={{ ...type.body, color: colors.textMuted, lineHeight: 1.65 }}>
+                    {profile.bio}
+                  </p>
                 </div>
               )}
-            </div>
 
-            {profile.bio === "" && profile.interests.length === 0 && (
-              <div style={styles.emptyState}>
-                <p>No profile information yet. Click "Edit Profile" to add details.</p>
-              </div>
-            )}
-          </div>
-        )}
+              {profile.interests.length > 0 && (
+                <div style={styles.section}>
+                  <h3 style={styles.sectionTitle}>Interests</h3>
+                  <div style={styles.tagsRow}>
+                    {profile.interests.map((interest) => (
+                      <span key={interest} style={tag({ tone: "neutral" })}>
+                        {interest}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {profile.bio === "" && profile.interests.length === 0 && (
+                <div style={styles.emptyState}>
+                  No profile information yet. Click <strong>Edit</strong> to add details.
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* Followers */}
+        <CollapsibleList
+          title="Followers"
+          users={followers}
+          open={showFollowers}
+          onToggle={() => setShowFollowers((v) => !v)}
+          emptyText="No followers yet"
+          currentUserId={currentUser.uid}
+        />
+
+        {/* Following */}
+        <CollapsibleList
+          title="Following"
+          users={following}
+          open={showFollowing}
+          onToggle={() => setShowFollowing((v) => !v)}
+          emptyText="Not following anyone yet"
+          currentUserId={currentUser.uid}
+        />
       </div>
     </div>
   );
 };
 
+const Field = ({ label, children }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <label
+      style={{
+        ...type.caption,
+        color: colors.textMuted,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+      }}
+    >
+      {label}
+    </label>
+    {children}
+  </div>
+);
+
+const Stat = ({ label, value }) => (
+  <div style={{ display: "flex", flexDirection: "column" }}>
+    <span style={{ ...type.headline, color: colors.text }}>{value}</span>
+    <span style={{ ...type.caption, color: colors.textFaint, textTransform: "uppercase" }}>
+      {label}
+    </span>
+  </div>
+);
+
+const CollapsibleList = ({ title, users, open, onToggle, emptyText, currentUserId }) => (
+  <section
+    style={{
+      ...glassCard({ padded: false }),
+      padding: spacing.xl,
+      marginBottom: spacing.xl,
+    }}
+  >
+    <header
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <h3 style={{ ...type.title3, color: colors.text }}>
+        {title} <span style={{ color: colors.textFaint, fontWeight: 500 }}>({users.length})</span>
+      </h3>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={button("ghost", { size: "sm" })}
+      >
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        {open ? "Hide" : "Show"}
+      </button>
+    </header>
+    {open && (
+      <div style={{ marginTop: spacing.lg, display: "flex", flexDirection: "column", gap: spacing.sm }}>
+        {users.length > 0 ? (
+          users.map((user) => (
+            <div key={user.uid} style={styles.userItem}>
+              <div style={styles.userLeft}>
+                <div style={styles.smallAvatar}>{initialOf(user.name)}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...type.callout, color: colors.text, fontWeight: 600 }}>
+                    {user.name}
+                  </div>
+                  <div style={{ ...type.footnote, color: colors.textFaint }}>
+                    {user.email}
+                  </div>
+                </div>
+              </div>
+              <FollowButton targetUserId={user.uid} currentUserId={currentUserId} />
+            </div>
+          ))
+        ) : (
+          <div style={styles.emptyState}>{emptyText}</div>
+        )}
+      </div>
+    )}
+  </section>
+);
+
 const styles = {
-  container: {
-    marginLeft: "70px",
-    padding: "40px",
-    minHeight: "100vh",
-    backgroundColor: "#0a0a0a"
-  },
-  loading: {
-    color: "#fff",
+  placeholder: {
+    ...type.body,
+    color: colors.textFaint,
+    padding: spacing["2xl"],
     textAlign: "center",
-    fontSize: "18px"
-  },
-  profileCard: {
-    maxWidth: "800px",
-    margin: "0 auto",
-    backgroundColor: "#1a1a1a",
-    borderRadius: "16px",
-    padding: "40px",
-    color: "#fff"
   },
   header: {
     display: "flex",
     alignItems: "center",
-    marginBottom: "30px",
-    paddingBottom: "20px",
-    borderBottom: "1px solid #333"
+    gap: spacing.lg,
+    paddingBottom: spacing.lg,
+    marginBottom: spacing.xl,
+    borderBottom: `1px solid ${colors.glassBorder}`,
+    flexWrap: "wrap",
+  },
+  avatarWrap: {
+    padding: "3px",
+    borderRadius: "50%",
+    background: gradients.brand,
+    flexShrink: 0,
   },
   avatar: {
-    width: "80px",
-    height: "80px",
+    width: "82px",
+    height: "82px",
     borderRadius: "50%",
-    backgroundColor: "#3b82f6",
+    background: colors.surface,
+    color: colors.text,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "32px",
-    fontWeight: "600",
-    marginRight: "20px"
+    fontSize: "30px",
+    fontWeight: 700,
   },
-  userInfo: {
-    flex: 1
+  headerInfo: {
+    flex: 1,
+    minWidth: "200px",
   },
-  name: {
-    fontSize: "28px",
-    fontWeight: "600",
-    marginBottom: "5px"
+  statsRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.lg,
+    marginTop: spacing.md,
+    flexWrap: "wrap",
   },
-  email: {
-    color: "#aaa",
-    fontSize: "14px"
-  },
-  editButton: {
-    padding: "10px 20px",
-    backgroundColor: "#3b82f6",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "500"
+  statsDivider: {
+    width: "1px",
+    height: "26px",
+    background: colors.glassBorder,
   },
   editForm: {
     display: "flex",
     flexDirection: "column",
-    gap: "20px"
-  },
-  formGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px"
-  },
-  label: {
-    fontSize: "14px",
-    fontWeight: "500",
-    color: "#aaa"
+    gap: spacing.lg,
   },
   input: {
-    padding: "12px",
-    backgroundColor: "#2a2a2a",
-    border: "1px solid #333",
-    borderRadius: "8px",
-    color: "#fff",
-    fontSize: "16px"
+    padding: `${spacing.md} ${spacing.md}`,
+    background: colors.input,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    fontSize: "15px",
+    fontFamily: font.family,
+    outline: "none",
+    transition: transition(["border-color"]),
+    boxSizing: "border-box",
   },
   textarea: {
-    padding: "12px",
-    backgroundColor: "#2a2a2a",
-    border: "1px solid #333",
-    borderRadius: "8px",
-    color: "#fff",
-    fontSize: "16px",
-    minHeight: "100px",
-    resize: "vertical"
+    padding: `${spacing.md} ${spacing.md}`,
+    background: colors.input,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.md,
+    fontSize: "15px",
+    fontFamily: font.family,
+    minHeight: "110px",
+    resize: "vertical",
+    outline: "none",
+    transition: transition(["border-color"]),
+    boxSizing: "border-box",
   },
   interestsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-    gap: "8px"
+    gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+    gap: spacing.sm,
   },
-  interestButton: {
-    padding: "8px 12px",
-    border: "1px solid #333",
-    borderRadius: "20px",
+  interestPill: {
+    padding: "8px 14px",
+    border: "1px solid",
+    borderRadius: radius.pill,
     cursor: "pointer",
-    fontSize: "12px",
-    transition: "all 0.2s"
-  },
-  saveButton: {
-    padding: "12px 24px",
-    backgroundColor: "#22c55e",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontSize: "16px",
-    fontWeight: "500",
-    alignSelf: "flex-start"
-  },
-  profileContent: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "30px"
+    fontSize: "13px",
+    fontWeight: 500,
+    transition: transition(["background", "color", "border-color"]),
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontFamily: font.family,
   },
   section: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px"
+    marginBottom: spacing.xl,
   },
   sectionTitle: {
-    fontSize: "18px",
-    fontWeight: "600",
-    color: "#fff"
+    ...type.title3,
+    color: colors.text,
+    marginBottom: spacing.md,
   },
-  bio: {
-    color: "#ccc",
-    lineHeight: "1.6"
-  },
-  interestsList: {
+  tagsRow: {
     display: "flex",
-    gap: "8px",
-    flexWrap: "wrap"
-  },
-  interestTag: {
-    padding: "6px 12px",
-    backgroundColor: "#2a2a2a",
-    borderRadius: "20px",
-    fontSize: "14px",
-    color: "#ccc"
+    flexWrap: "wrap",
+    gap: "6px",
   },
   emptyState: {
+    ...type.footnote,
+    color: colors.textFaint,
     textAlign: "center",
-    padding: "40px",
-    color: "#666"
-  },
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "10px"
-  },
-  toggleButton: {
-    padding: "6px 12px",
-    backgroundColor: "#3b82f6",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "12px",
-    fontWeight: "500"
-  },
-  usersList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px"
+    padding: spacing.xl,
+    background: colors.glassBgSoft,
+    border: `1px dashed ${colors.glassBorder}`,
+    borderRadius: radius.md,
   },
   userItem: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: "12px",
-    backgroundColor: "#2a2a2a",
-    borderRadius: "8px",
-    border: "1px solid #333"
+    justifyContent: "space-between",
+    gap: spacing.md,
+    padding: spacing.md,
+    background: colors.glassBgSoft,
+    border: `1px solid ${colors.glassBorder}`,
+    borderRadius: radius.md,
   },
-  userName: {
-    fontSize: "16px",
-    fontWeight: "500",
-    color: "#fff",
-    marginBottom: "2px"
+  userLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
   },
-  userEmail: {
+  smallAvatar: {
+    width: "38px",
+    height: "38px",
+    borderRadius: "50%",
+    background: gradients.brand,
+    color: colors.text,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 700,
     fontSize: "14px",
-    color: "#aaa"
-  }
+    flexShrink: 0,
+  },
 };
 
 export default Profile;

@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
+import { FiTrendingUp as Flame, FiStar as Sparkles } from "react-icons/fi";
 import { apiGet } from "../services/apiClient";
 import { toggleLike } from "../services/postApi";
 import { useAuth } from "../contexts/AuthContext";
 import PostCard from "../components/PostCard";
 import FollowButton from "../components/FollowButton";
+import {
+  colors,
+  spacing,
+  radius,
+  type,
+  glassCard,
+  tag,
+  avatar,
+  transition,
+  pageShell,
+  pageContent,
+} from "../theme";
+
+const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
 
 const Explore = () => {
   const { currentUser } = useAuth();
@@ -62,30 +77,45 @@ const Explore = () => {
   };
 
   if (loading) {
-    return <div style={styles.page}><div style={styles.loading}>Loading Explore…</div></div>;
+    return (
+      <div data-page-shell style={pageShell()}>
+        <div style={pageContent({ maxWidth: 720 })}>
+          <p style={styles.placeholder}>Loading Explore…</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.wrapper}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>Explore</h1>
-          <p style={styles.subtitle}>
+    <div data-page-shell style={pageShell()}>
+      <div style={pageContent({ maxWidth: 720 })}>
+        <header style={styles.header}>
+          <h1 style={{ ...type.largeTitle, color: colors.text }}>Explore</h1>
+          <p
+            style={{
+              ...type.body,
+              color: colors.textMuted,
+              marginTop: spacing.sm,
+            }}
+          >
             Trending in the last 24 hours, and people who share your interests.
           </p>
-        </div>
+        </header>
 
         <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>🔥 Trending now</h2>
+          <SectionTitle icon={<Flame size={18} />}>
+            Trending now
+          </SectionTitle>
           {trending.length === 0 ? (
-            <p style={styles.empty}>No trending posts yet — be the first to post something people love.</p>
+            <p style={styles.empty}>
+              No trending posts yet — be the first to post something people love.
+            </p>
           ) : (
             trending.map((post) => (
               <PostCard
                 key={post.id}
                 post={post}
                 currentUserId={currentUser?.uid}
-                onFollowToggle={() => {}}
                 onLikeToggle={handleLikeToggle}
               />
             ))
@@ -93,25 +123,47 @@ const Explore = () => {
         </section>
 
         <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>✨ People who share your interests</h2>
+          <SectionTitle icon={<Sparkles size={18} />}>
+            People who share your interests
+          </SectionTitle>
           {byInterest.length === 0 ? (
             <p style={styles.empty}>
               Add interests on your profile to discover like-minded people.
             </p>
           ) : (
-            byInterest.map((user) => (
-              <div key={user.uid} style={styles.userCard}>
-                <div>
-                  <div style={styles.userName}>{user.name}</div>
-                  <div style={styles.common}>
-                    {user.commonInterests?.slice(0, 4).map((c, i) => (
-                      <span key={i} style={styles.tag}>{c}</span>
-                    ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: spacing.md }}>
+              {byInterest.map((user) => (
+                <article key={user.uid} style={styles.userCard}>
+                  <div style={styles.userLeft}>
+                    <div style={avatar({ size: 42 })}>{initialOf(user.name)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          ...type.headline,
+                          color: colors.text,
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {user.name}
+                      </div>
+                      {user.commonInterests && user.commonInterests.length > 0 && (
+                        <div style={styles.tags}>
+                          {user.commonInterests.slice(0, 4).map((c, i) => (
+                            <span key={i} style={tag({ tone: "brand" })}>
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <FollowButton targetUserId={user.uid} currentUserId={currentUser?.uid} />
-              </div>
-            ))
+                  <FollowButton
+                    targetUserId={user.uid}
+                    currentUserId={currentUser?.uid}
+                  />
+                </article>
+              ))}
+            </div>
           )}
         </section>
       </div>
@@ -119,33 +171,77 @@ const Explore = () => {
   );
 };
 
+const SectionTitle = ({ icon, children }) => (
+  <h2
+    style={{
+      ...type.title3,
+      color: colors.text,
+      display: "flex",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
+    }}
+  >
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "32px",
+        height: "32px",
+        borderRadius: "10px",
+        background: colors.primarySoft,
+        border: `1px solid ${colors.primaryBorder}`,
+        color: colors.primary,
+      }}
+    >
+      {icon}
+    </span>
+    {children}
+  </h2>
+);
+
 const styles = {
-  page: { marginLeft: "70px", minHeight: "100vh", backgroundColor: "#0a0a0a", color: "#fff" },
-  wrapper: { maxWidth: "680px", margin: "0 auto", padding: "30px" },
-  header: { marginBottom: "24px" },
-  title: { fontSize: "32px", fontWeight: 700, marginBottom: "6px" },
-  subtitle: { color: "#888", fontSize: "15px" },
-  section: { marginBottom: "36px" },
-  sectionTitle: { fontSize: "20px", fontWeight: 600, marginBottom: "16px" },
-  empty: { color: "#888", fontSize: "14px" },
-  loading: { padding: "40px", color: "#aaa" },
-  userCard: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    background: "#1f1f1f",
-    borderRadius: "10px",
-    padding: "14px 18px",
-    marginBottom: "10px",
+  header: {
+    marginBottom: spacing.xl,
   },
-  userName: { fontWeight: 600, marginBottom: "6px" },
-  common: { display: "flex", gap: "6px", flexWrap: "wrap" },
-  tag: {
-    padding: "2px 8px",
-    background: "#333",
-    borderRadius: "10px",
-    fontSize: "12px",
-    color: "#bbb",
+  section: {
+    marginBottom: spacing["2xl"],
+  },
+  empty: {
+    ...type.body,
+    color: colors.textFaint,
+    padding: spacing.lg,
+    background: colors.glassBgSoft,
+    border: `1px dashed ${colors.glassBorder}`,
+    borderRadius: radius.md,
+  },
+  placeholder: {
+    ...type.body,
+    color: colors.textFaint,
+    padding: spacing["2xl"],
+    textAlign: "center",
+  },
+  userCard: {
+    ...glassCard({ padded: false }),
+    padding: spacing.lg,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    transition: transition(["transform", "background", "box-shadow"]),
+  },
+  userLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
+  },
+  tags: {
+    display: "flex",
+    gap: "6px",
+    flexWrap: "wrap",
   },
 };
 
