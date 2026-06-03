@@ -5,9 +5,11 @@ import {
   FiHash as Hash,
   FiUsers as Users,
 } from "react-icons/fi";
+import EmptyState from "../components/EmptyState";
 import { apiGet } from "../services/apiClient";
 import { useAuth } from "../contexts/AuthContext";
 import FollowButton from "../components/FollowButton";
+import Avatar from "../components/Avatar";
 import {
   colors,
   spacing,
@@ -15,13 +17,10 @@ import {
   type,
   glassCard,
   tag,
-  avatar,
   transition,
   pageShell,
   pageContent,
 } from "../theme";
-
-const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
 
 const TYPE_OPTIONS = [
   { value: "users", label: "People", Icon: Users },
@@ -173,9 +172,7 @@ const Search = () => {
               searchType === "users" ? (
                 <article key={index} style={styles.userCard}>
                   <div style={styles.userLeft}>
-                    <div style={avatar({ size: 44 })}>
-                      {initialOf(result.name)}
-                    </div>
+                    <Avatar user={result} size={44} />
                     <div style={{ minWidth: 0 }}>
                       <h3
                         style={{
@@ -243,9 +240,17 @@ const Search = () => {
               )
             )
           ) : searchTerm.trim() ? (
-            <p style={styles.placeholder}>No results found</p>
+            <EmptyState
+              icon={<SearchIcon size={22} />}
+              title="No results"
+              body={`Nothing matched "${searchTerm}". Try a different term or switch between People and Interests.`}
+            />
           ) : (
-            <p style={styles.placeholder}>Start typing to search...</p>
+            <EmptyState
+              icon={<SearchIcon size={22} />}
+              title="Start typing to search"
+              body="Find people by name, or browse popular interest tags."
+            />
           )}
         </div>
       </div>

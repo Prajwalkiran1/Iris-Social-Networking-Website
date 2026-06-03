@@ -34,7 +34,7 @@ function validateMessage(req, res, next) {
 }
 
 function validateProfile(req, res, next) {
-  const { name, bio, interests } = req.body || {};
+  const { name, bio, interests, photoURL } = req.body || {};
   if (name !== undefined && (!isStr(name) || name.length > 80)) {
     return fail(res, "Name must be a string up to 80 chars");
   }
@@ -48,6 +48,11 @@ function validateProfile(req, res, next) {
       !interests.every((i) => isStr(i) && i.length <= 40)
     ) {
       return fail(res, "Interests must be up to 30 short strings");
+    }
+  }
+  if (photoURL !== undefined && photoURL !== null) {
+    if (!isStr(photoURL) || photoURL.length > 2000) {
+      return fail(res, "photoURL must be a string up to 2000 chars");
     }
   }
   next();

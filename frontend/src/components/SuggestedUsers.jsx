@@ -1,6 +1,7 @@
 import React from "react";
 import { FiUsers as Users } from "react-icons/fi";
 import FollowButton from "./FollowButton";
+import Avatar from "./Avatar";
 import { useAuth } from "../contexts/AuthContext";
 import {
   colors,
@@ -8,11 +9,8 @@ import {
   spacing,
   type,
   tag,
-  avatar,
   transition,
 } from "../theme";
-
-const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
 
 const SuggestedUsers = ({ users = [] }) => {
   const { currentUser } = useAuth();
@@ -72,7 +70,7 @@ const SuggestedUsers = ({ users = [] }) => {
                   minWidth: 0,
                 }}
               >
-                <div style={avatar({ size: 38 })}>{initialOf(user.name)}</div>
+                <Avatar user={user} size={38} />
                 <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                   <span
                     style={{

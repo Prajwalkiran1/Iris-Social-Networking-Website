@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FiHeart } from "react-icons/fi";
 import { FaHeart } from "react-icons/fa";
 import FollowButton from "./FollowButton";
+import Avatar from "./Avatar";
 import {
   colors,
   glassCard,
@@ -9,10 +10,7 @@ import {
   spacing,
   type,
   transition,
-  avatar,
 } from "../theme";
-
-const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
 
 const PostCard = ({ post, currentUserId, onLikeToggle }) => {
   const [hovered, setHovered] = useState(false);
@@ -45,7 +43,7 @@ const PostCard = ({ post, currentUserId, onLikeToggle }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: spacing.md }}>
-          <div style={avatar({ size: 40 })}>{initialOf(post.author.name)}</div>
+          <Avatar user={post.author} size={40} />
           <div style={{ display: "flex", flexDirection: "column" }}>
             <span style={{ ...type.headline, color: colors.text }}>
               {post.author.name}

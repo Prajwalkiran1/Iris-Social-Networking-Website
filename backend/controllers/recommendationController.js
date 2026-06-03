@@ -16,6 +16,7 @@ const peopleYouMayKnow = async (req, res) => {
       MATCH (me:User {uid:$uid})-[:FOLLOWS]->(mutual:User)-[:FOLLOWS]->(cand:User)
       WHERE cand <> me AND NOT (me)-[:FOLLOWS]->(cand)
       RETURN cand.uid AS uid, cand.name AS name,
+             cand.photoURL AS photoURL,
              coalesce(cand.interests, []) AS interests,
              count(DISTINCT mutual) AS mutuals
       ORDER BY mutuals DESC, cand.name
@@ -27,6 +28,7 @@ const peopleYouMayKnow = async (req, res) => {
       result.records.map((r) => ({
         uid: r.get("uid"),
         name: r.get("name"),
+        photoURL: r.get("photoURL"),
         interests: r.get("interests"),
         mutuals: num(r.get("mutuals")),
       }))
@@ -55,6 +57,7 @@ const interestMatches = async (req, res) => {
               WHERE i IN coalesce(cand.interests, [])] AS common
       WHERE size(common) > 0
       RETURN cand.uid AS uid, cand.name AS name,
+             cand.photoURL AS photoURL,
              coalesce(cand.interests, []) AS interests,
              common, size(common) AS overlap
       ORDER BY overlap DESC, cand.name
@@ -66,6 +69,7 @@ const interestMatches = async (req, res) => {
       result.records.map((r) => ({
         uid: r.get("uid"),
         name: r.get("name"),
+        photoURL: r.get("photoURL"),
         interests: r.get("interests"),
         commonInterests: r.get("common"),
         overlap: num(r.get("overlap")),
@@ -92,7 +96,8 @@ const trendingPosts = async (req, res) => {
       OPTIONAL MATCH (p)<-[:LIKED]-(l:User)
       WITH author, p, count(l) AS likeCount
       MATCH (me:User {uid:$uid})
-      RETURN p, author.uid AS authorUid, author.name AS authorName, likeCount,
+      RETURN p, author.uid AS authorUid, author.name AS authorName,
+             author.photoURL AS authorPhotoURL, likeCount,
              EXISTS { (me)-[:LIKED]->(p) } AS isLiked,
              EXISTS { (me)-[:FOLLOWS]->(author) } AS isFollowing
       ORDER BY likeCount DESC, p.timestamp DESC
@@ -113,6 +118,7 @@ const trendingPosts = async (req, res) => {
           author: {
             uid: r.get("authorUid"),
             name: r.get("authorName"),
+            photoURL: r.get("authorPhotoURL"),
             isFollowing: r.get("isFollowing"),
           },
         };

@@ -56,14 +56,18 @@ router.put("/:uid", validateProfile, async (req, res) => {
   if (uid !== req.user.uid) {
     return res.status(403).json({ error: "You can only edit your own profile" });
   }
-  const { name, bio, interests } = req.body;
+  const { name, bio, interests, photoURL } = req.body;
   const session = driver.session();
-  
+
   try {
+    // photoURL is optional — only set it if the client sent it (including
+    // explicit null to clear). Otherwise leave the existing value untouched.
+    const setPhoto = Object.prototype.hasOwnProperty.call(req.body, "photoURL");
     await session.run(
       `MERGE (u:User {uid: $uid})
-       SET u.name = $name, u.bio = $bio, u.interests = $interests`,
-      { uid, name, bio, interests }
+       SET u.name = $name, u.bio = $bio, u.interests = $interests` +
+        (setPhoto ? `, u.photoURL = $photoURL` : ``),
+      { uid, name, bio, interests, photoURL: photoURL ?? null }
     );
     
     res.json({ message: "Profile updated successfully" });

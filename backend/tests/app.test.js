@@ -14,6 +14,7 @@ describe("API security & health", () => {
     ["get", "/api/search/users?q=a"],
     ["post", "/api/follow"],
     ["get", "/api/messages/conversations"],
+    ["post", "/api/messages/read/somebody"],
     ["get", "/api/recommendations/people"],
     ["put", "/api/profile/someone"],
   ])("%s %s requires auth (401 without token)", async (method, path) => {

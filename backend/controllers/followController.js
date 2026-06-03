@@ -123,7 +123,7 @@ const getFollowersList = async (req, res) => {
     const result = await session.run(
       `
       MATCH (follower:User)-[:FOLLOWS]->(u:User {uid:$userId})
-      RETURN follower.uid AS uid, follower.name AS name, follower.email AS email
+      RETURN follower.uid AS uid, follower.name AS name, follower.email AS email, follower.photoURL AS photoURL
       `,
       { userId }
     );
@@ -131,7 +131,8 @@ const getFollowersList = async (req, res) => {
     const followers = result.records.map(record => ({
       uid: record.get("uid"),
       name: record.get("name"),
-      email: record.get("email")
+      email: record.get("email"),
+      photoURL: record.get("photoURL"),
     }));
     
     res.status(200).json(followers);
@@ -152,7 +153,7 @@ const getFollowingList = async (req, res) => {
     const result = await session.run(
       `
       MATCH (u:User {uid:$userId})-[:FOLLOWS]->(following:User)
-      RETURN following.uid AS uid, following.name AS name, following.email AS email
+      RETURN following.uid AS uid, following.name AS name, following.email AS email, following.photoURL AS photoURL
       `,
       { userId }
     );
@@ -160,7 +161,8 @@ const getFollowingList = async (req, res) => {
     const following = result.records.map(record => ({
       uid: record.get("uid"),
       name: record.get("name"),
-      email: record.get("email")
+      email: record.get("email"),
+      photoURL: record.get("photoURL"),
     }));
     
     res.status(200).json(following);

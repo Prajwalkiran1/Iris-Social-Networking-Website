@@ -5,6 +5,8 @@ import {
   FiMessageCircle as MessageCircle,
   FiPlus as Plus,
 } from "react-icons/fi";
+import EmptyState from "../components/EmptyState";
+import Avatar from "../components/Avatar";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
@@ -23,14 +25,13 @@ import {
 const MESSAGE_POLL_MS = 3000;
 const CONVERSATIONS_POLL_MS = 10000;
 
-const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
-
 const formatConversations = (data) =>
   (Array.isArray(data) ? data : []).map((conv) => ({
     id: conv.uid,
-    user: { uid: conv.uid, name: conv.name },
+    user: { uid: conv.uid, name: conv.name, photoURL: conv.photoURL || null },
     lastMessage: conv.lastMessage || "No messages yet",
     timestamp: conv.timestamp || new Date().toISOString(),
+    unreadCount: Number(conv.unreadCount) || 0,
   }));
 
 const formatMessages = (data) =>
@@ -122,18 +123,23 @@ const Chat = () => {
   }, [currentUser, navigate, loadConversations]);
 
   // Poll: refresh open chat every 3s, refresh conversation list every 10s.
+  // Also mark-as-read alongside the message poll so the unread badge stays
+  // at zero while the user has the chat actively open.
   useEffect(() => {
     if (!currentUser) return;
     const msgInterval = setInterval(() => {
       const cur = selectedChatRef.current;
-      if (cur) loadMessages(cur.user.uid);
+      if (cur) {
+        loadMessages(cur.user.uid);
+        markConversationRead(cur.user.uid);
+      }
     }, MESSAGE_POLL_MS);
     const convInterval = setInterval(loadConversations, CONVERSATIONS_POLL_MS);
     return () => {
       clearInterval(msgInterval);
       clearInterval(convInterval);
     };
-  }, [currentUser, loadConversations, loadMessages]);
+  }, [currentUser, loadConversations, loadMessages, markConversationRead]);
 
   // Filter users based on search term
   useEffect(() => {
@@ -148,10 +154,27 @@ const Chat = () => {
     setFilteredUsers(filtered);
   }, [searchTerm, users]);
 
+  const markConversationRead = useCallback(async (otherUid) => {
+    try {
+      await apiPost(`/messages/read/${otherUid}`);
+    } catch (error) {
+      // Non-fatal — UI keeps working, just the badge won't clear on the
+      // server side. Don't surface to the user.
+      console.error("Failed to mark conversation as read:", error.message);
+    }
+  }, []);
+
   const selectChat = async (conversation) => {
     setSelectedChat(conversation);
     setMessages([]);
     await loadMessages(conversation.user.uid);
+    await markConversationRead(conversation.user.uid);
+    // Optimistically clear local unread badge so the user sees feedback now.
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.user.uid === conversation.user.uid ? { ...c, unreadCount: 0 } : c
+      )
+    );
   };
 
   const startConversation = async (user) => {
@@ -202,6 +225,9 @@ const Chat = () => {
       // the canonical one (and surfaces any messages the other party sent
       // in between).
       await loadMessages(selectedChat.user.uid);
+      // Sending implies "I've seen everything up to now" — sync the read
+      // marker so the conversations badge stays at zero for me.
+      markConversationRead(selectedChat.user.uid);
     } catch (error) {
       console.error("Failed to send message:", error.message);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -263,22 +289,38 @@ const Chat = () => {
                       : "transparent",
                   }}
                 >
-                  <div style={styles.smallAvatar}>
-                    {initialOf(conversation.user.name)}
-                  </div>
+                  <Avatar user={conversation.user} size={40} />
                   <div style={styles.conversationText}>
                     <div style={styles.conversationName}>
                       {conversation.user.name}
                     </div>
-                    <div style={styles.lastMessage}>
+                    <div
+                      style={{
+                        ...styles.lastMessage,
+                        color:
+                          conversation.unreadCount > 0
+                            ? colors.text
+                            : colors.textFaint,
+                        fontWeight: conversation.unreadCount > 0 ? 600 : 400,
+                      }}
+                    >
                       {conversation.lastMessage}
                     </div>
                   </div>
-                  <div style={styles.timestamp}>
-                    {new Date(conversation.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  <div style={styles.conversationMeta}>
+                    <div style={styles.timestamp}>
+                      {new Date(conversation.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                    {conversation.unreadCount > 0 && (
+                      <span style={styles.unreadBadge}>
+                        {conversation.unreadCount > 99
+                          ? "99+"
+                          : conversation.unreadCount}
+                      </span>
+                    )}
                   </div>
                 </button>
               );
@@ -288,7 +330,7 @@ const Chat = () => {
             <div style={styles.sectionLabel}>Start new chat</div>
             {filteredUsers.slice(0, 12).map((user) => (
               <div key={user.uid} style={styles.userItem}>
-                <div style={styles.smallAvatar}>{initialOf(user.name)}</div>
+                <Avatar user={user} size={40} />
                 <div style={styles.userTextWrap}>
                   <div style={styles.userName}>{user.name}</div>
                   {user.interests && user.interests.length > 0 && (
@@ -328,18 +370,10 @@ const Chat = () => {
           {selectedChat ? (
             <>
               <header style={styles.chatHeader}>
-                <div style={styles.smallAvatar}>
-                  {initialOf(selectedChat.user.name)}
-                </div>
+                <Avatar user={selectedChat.user} size={40} />
                 <div>
                   <div style={{ ...type.headline, color: colors.text }}>
                     {selectedChat.user.name}
-                  </div>
-                  <div style={styles.statusRow}>
-                    <span style={styles.statusDot} />
-                    <span style={{ ...type.caption, color: colors.textFaint }}>
-                      Active now
-                    </span>
                   </div>
                 </div>
               </header>
@@ -419,16 +453,12 @@ const Chat = () => {
               </div>
             </>
           ) : (
-            <div style={styles.emptyChat}>
-              <div style={styles.emptyIconWrap}>
-                <MessageCircle size={28} />
-              </div>
-              <h3 style={{ ...type.title3, color: colors.text }}>
-                Select a conversation
-              </h3>
-              <p style={{ ...type.body, color: colors.textMuted, marginTop: spacing.sm }}>
-                Choose from your existing conversations, or start a new one.
-              </p>
+            <div style={styles.emptyChatWrap}>
+              <EmptyState
+                icon={<MessageCircle size={22} />}
+                title="Select a conversation"
+                body="Choose from your existing conversations, or start a new one."
+              />
             </div>
           )}
         </main>
@@ -545,6 +575,27 @@ const styles = {
     color: colors.textFaint,
     flexShrink: 0,
   },
+  conversationMeta: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "4px",
+    flexShrink: 0,
+  },
+  unreadBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "18px",
+    height: "18px",
+    padding: "0 6px",
+    borderRadius: radius.pill,
+    background: colors.primary,
+    color: colors.text,
+    fontSize: "11px",
+    fontWeight: 700,
+    boxShadow: "0 0 8px rgba(59,130,246,0.4)",
+  },
   userItem: {
     display: "flex",
     alignItems: "center",
@@ -607,19 +658,6 @@ const styles = {
     gap: spacing.md,
     padding: spacing.lg,
     borderBottom: `1px solid ${colors.glassBorder}`,
-  },
-  statusRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    marginTop: "2px",
-  },
-  statusDot: {
-    width: "7px",
-    height: "7px",
-    borderRadius: "50%",
-    background: colors.success,
-    boxShadow: "0 0 8px rgba(34,197,94,0.6)",
   },
   messagesContainer: {
     flex: 1,
@@ -688,42 +726,15 @@ const styles = {
   },
 
   // --- Empty state ---
-  emptyChat: {
+  emptyChatWrap: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     padding: spacing["2xl"],
-    textAlign: "center",
-  },
-  emptyIconWrap: {
-    width: "64px",
-    height: "64px",
-    borderRadius: "50%",
-    background: colors.primarySoft,
-    border: `1px solid ${colors.primaryBorder}`,
-    color: colors.primary,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.lg,
   },
 
-  // --- Reusable avatar ---
-  smallAvatar: {
-    width: "40px",
-    height: "40px",
-    borderRadius: "50%",
-    background: gradients.brand,
-    color: colors.text,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 700,
-    fontSize: "14px",
-    flexShrink: 0,
-  },
 };
 
 export default Chat;

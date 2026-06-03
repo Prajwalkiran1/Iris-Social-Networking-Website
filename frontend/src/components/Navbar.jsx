@@ -9,6 +9,7 @@ import {
   FiLogOut as LogOut,
 } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
+import { apiGet } from "../services/apiClient";
 import {
   colors,
   spacing,
@@ -17,6 +18,45 @@ import {
   gradients,
   transition,
 } from "../theme";
+
+// Poll the conversations list for unread total. Used by the bell-style
+// badge on the Messages icon. Cadence matches Chat.jsx's own conversations
+// poll (10s) so the badge stays roughly in sync; if the user is on /chat
+// the page's own polling will also keep things fresh.
+const UNREAD_POLL_MS = 10000;
+
+const useUnreadTotal = (currentUser, path) => {
+  const [total, setTotal] = useState(0);
+  useEffect(() => {
+    if (!currentUser) {
+      setTotal(0);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const data = await apiGet("/messages/conversations");
+        if (cancelled) return;
+        const sum = (Array.isArray(data) ? data : []).reduce(
+          (n, c) => n + (Number(c.unreadCount) || 0),
+          0
+        );
+        setTotal(sum);
+      } catch {
+        /* keep the previous value */
+      }
+    };
+    refresh();
+    const id = setInterval(refresh, UNREAD_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+    // Re-run whenever the route changes so opening /chat triggers an
+    // immediate refresh (and the badge clears quickly when the user reads).
+  }, [currentUser, path]);
+  return total;
+};
 
 // Tiny matchMedia hook so we can swap to a bottom tab bar under 768px.
 const useIsMobile = () => {
@@ -47,8 +87,9 @@ const Navbar = () => {
   const [expanded, setExpanded] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { currentUser, logout } = useAuth();
   const isMobile = useIsMobile();
+  const unreadTotal = useUnreadTotal(currentUser, location.pathname);
 
   const handleLogout = async () => {
     await logout();
@@ -65,6 +106,7 @@ const Navbar = () => {
       <nav style={styles.mobileBar}>
         {ITEMS.map(({ to, label, Icon }) => {
           const active = isActive(to);
+          const showBadge = to === "/chat" && unreadTotal > 0;
           return (
             <button
               key={to}
@@ -77,7 +119,10 @@ const Navbar = () => {
                 color: active ? colors.text : colors.textFaint,
               }}
             >
-              <Icon size={22} />
+              <span style={styles.iconWrap}>
+                <Icon size={22} />
+                {showBadge && <span style={styles.notifDot} />}
+              </span>
               <span style={styles.mobileTabLabel}>{label}</span>
               {active && <span style={styles.mobileActiveDot} />}
             </button>
@@ -113,6 +158,7 @@ const Navbar = () => {
             expanded={expanded}
             active={isActive(item.to)}
             onClick={() => navigate(item.to)}
+            badge={item.to === "/chat" && unreadTotal > 0 ? unreadTotal : 0}
           />
         ))}
       </div>
@@ -131,7 +177,7 @@ const Navbar = () => {
   );
 };
 
-const NavItem = ({ Icon, label, expanded, active, onClick }) => {
+const NavItem = ({ Icon, label, expanded, active, onClick, badge = 0 }) => {
   const [hover, setHover] = useState(false);
 
   const background = active
@@ -156,10 +202,20 @@ const NavItem = ({ Icon, label, expanded, active, onClick }) => {
       aria-current={active ? "page" : undefined}
     >
       {active && <span style={styles.activeIndicator} />}
-      <Icon size={20} />
+      <span style={styles.iconWrap}>
+        <Icon size={20} />
+        {badge > 0 && (
+          <span style={styles.notifDot} aria-label={`${badge} unread`} />
+        )}
+      </span>
       {expanded && (
         <span style={{ ...type.callout, color: "inherit", fontWeight: active ? 600 : 500 }}>
           {label}
+        </span>
+      )}
+      {expanded && badge > 0 && (
+        <span style={styles.navItemBadge}>
+          {badge > 99 ? "99+" : badge}
         </span>
       )}
     </button>
@@ -225,6 +281,38 @@ const styles = {
     borderRadius: "2px",
     background: gradients.brand,
     boxShadow: "0 0 12px rgba(59,130,246,0.55)",
+  },
+
+  iconWrap: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notifDot: {
+    position: "absolute",
+    top: "-3px",
+    right: "-4px",
+    width: "9px",
+    height: "9px",
+    borderRadius: "50%",
+    background: colors.primary,
+    border: `2px solid ${colors.bg}`,
+    boxShadow: "0 0 8px rgba(59,130,246,0.7)",
+  },
+  navItemBadge: {
+    marginLeft: "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "20px",
+    height: "20px",
+    padding: "0 6px",
+    borderRadius: radius.pill,
+    background: colors.primary,
+    color: colors.text,
+    fontSize: "11px",
+    fontWeight: 700,
   },
 
   // --- Mobile bottom tab bar ---

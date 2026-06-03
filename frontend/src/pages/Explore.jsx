@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { FiTrendingUp as Flame, FiStar as Sparkles } from "react-icons/fi";
+import EmptyState from "../components/EmptyState";
 import { apiGet } from "../services/apiClient";
 import { toggleLike } from "../services/postApi";
 import { useAuth } from "../contexts/AuthContext";
 import PostCard from "../components/PostCard";
 import FollowButton from "../components/FollowButton";
+import Avatar from "../components/Avatar";
 import {
   colors,
   spacing,
@@ -12,13 +14,10 @@ import {
   type,
   glassCard,
   tag,
-  avatar,
   transition,
   pageShell,
   pageContent,
 } from "../theme";
-
-const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "?");
 
 const Explore = () => {
   const { currentUser } = useAuth();
@@ -107,9 +106,11 @@ const Explore = () => {
             Trending now
           </SectionTitle>
           {trending.length === 0 ? (
-            <p style={styles.empty}>
-              No trending posts yet — be the first to post something people love.
-            </p>
+            <EmptyState
+              icon={<Flame size={22} />}
+              title="No trending posts yet"
+              body="Be the first to post something people love."
+            />
           ) : (
             trending.map((post) => (
               <PostCard
@@ -127,15 +128,17 @@ const Explore = () => {
             People who share your interests
           </SectionTitle>
           {byInterest.length === 0 ? (
-            <p style={styles.empty}>
-              Add interests on your profile to discover like-minded people.
-            </p>
+            <EmptyState
+              icon={<Sparkles size={22} />}
+              title="No matches yet"
+              body="Add a few interests on your profile to discover like-minded people."
+            />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: spacing.md }}>
               {byInterest.map((user) => (
                 <article key={user.uid} style={styles.userCard}>
                   <div style={styles.userLeft}>
-                    <div style={avatar({ size: 42 })}>{initialOf(user.name)}</div>
+                    <Avatar user={user} size={42} />
                     <div style={{ minWidth: 0 }}>
                       <div
                         style={{

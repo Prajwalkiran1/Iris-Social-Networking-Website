@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 import { getFeed } from "../services/feedApi";
 import { toggleLike } from "../services/postApi";
 import { apiGet } from "../services/apiClient";
+import { FiMessageSquare } from "react-icons/fi";
 import PostCard from "../components/PostCard";
 import CreatePost from "../components/CreatePost";
 import SuggestedUsers from "../components/SuggestedUsers";
+import EmptyState from "../components/EmptyState";
+import Modal from "../components/Modal";
+import FollowButton from "../components/FollowButton";
+import Avatar from "../components/Avatar";
 import { useAuth } from "../contexts/AuthContext";
 import {
   colors,
@@ -12,7 +17,6 @@ import {
   radius,
   type,
   glassCard,
-  gradients,
   pageShell,
   pageContent,
 } from "../theme";
@@ -25,9 +29,27 @@ const HomeFeed = () => {
   const [currentUserData, setCurrentUserData] = useState({
     name: "",
     uid: "",
+    photoURL: null,
     followers: 0,
     following: 0,
   });
+  // null | "followers" | "following" — opens the corresponding list modal
+  const [openList, setOpenList] = useState(null);
+  const [followers, setFollowers] = useState([]);
+  const [following, setFollowing] = useState([]);
+
+  const loadFollowLists = async (uid) => {
+    try {
+      const [f, g] = await Promise.all([
+        apiGet(`/follow/followers/${uid}`),
+        apiGet(`/follow/following/${uid}`),
+      ]);
+      setFollowers(Array.isArray(f) ? f : []);
+      setFollowing(Array.isArray(g) ? g : []);
+    } catch (err) {
+      console.error("Failed to load follow lists:", err.message);
+    }
+  };
 
   const fetchFollowerCounts = async (userId) => {
     try {
@@ -57,6 +79,7 @@ const HomeFeed = () => {
           author: {
             uid: post.author?.uid || "",
             name: post.author?.name || "Unknown",
+            photoURL: post.author?.photoURL || null,
             isFollowing: post.author?.isFollowing || false,
           },
         }));
@@ -70,12 +93,22 @@ const HomeFeed = () => {
         }
 
         if (currentUser?.uid) {
-          setCurrentUserData({
-            name: currentUser.displayName || "User",
-            uid: currentUser.uid,
-            followers: 0,
-            following: 0,
-          });
+          // Fetch own profile (to pick up photoURL) alongside counts.
+          try {
+            const ownProfile = await apiGet(`/profile/${currentUser.uid}`);
+            setCurrentUserData((prev) => ({
+              ...prev,
+              name: ownProfile?.name || currentUser.displayName || "User",
+              uid: currentUser.uid,
+              photoURL: ownProfile?.photoURL || null,
+            }));
+          } catch (e) {
+            setCurrentUserData((prev) => ({
+              ...prev,
+              name: currentUser.displayName || "User",
+              uid: currentUser.uid,
+            }));
+          }
           await fetchFollowerCounts(currentUser.uid);
         }
       } catch (err) {
@@ -137,8 +170,6 @@ const HomeFeed = () => {
     );
   }
 
-  const initial = (currentUserData.name || "U").charAt(0).toUpperCase();
-
   return (
     <div data-page-shell style={pageShell()}>
       <div style={pageContent({ maxWidth: 1180 })}>
@@ -161,14 +192,11 @@ const HomeFeed = () => {
             <CreatePost onCreate={handleCreatePost} />
 
             {posts.length === 0 ? (
-              <div style={styles.emptyState}>
-                <h3 style={{ ...type.title3, color: colors.text, marginBottom: spacing.sm }}>
-                  No posts yet
-                </h3>
-                <p style={{ ...type.body, color: colors.textMuted }}>
-                  Be the first to share something with your community.
-                </p>
-              </div>
+              <EmptyState
+                icon={<FiMessageSquare size={22} />}
+                title="No posts yet"
+                body="Follow a few people from Explore, or write the first post yourself."
+              />
             ) : (
               <div style={styles.postsContainer}>
                 {posts.map((post) => (
@@ -186,9 +214,15 @@ const HomeFeed = () => {
           {/* Right sidebar — hides under 1024px via inline conditional */}
           <aside style={styles.sidebar}>
             <div style={styles.profileCard}>
-              <div style={styles.avatarRing}>
-                <div style={styles.avatar}>{initial}</div>
-              </div>
+              <Avatar
+                user={{
+                  name: currentUserData.name,
+                  photoURL: currentUserData.photoURL,
+                }}
+                size={72}
+                ring
+                style={{ marginBottom: spacing.md }}
+              />
               <div style={styles.profileInfo}>
                 <h3 style={{ ...type.title3, color: colors.text }}>
                   {currentUserData.name || "User"}
@@ -200,9 +234,27 @@ const HomeFeed = () => {
                 )}
               </div>
               <div style={styles.profileStats}>
-                <Stat label="Followers" value={currentUserData.followers} />
+                <Stat
+                  label="Followers"
+                  value={currentUserData.followers}
+                  onClick={() => {
+                    setOpenList("followers");
+                    if (!followers.length && !following.length && currentUserData.uid) {
+                      loadFollowLists(currentUserData.uid);
+                    }
+                  }}
+                />
                 <span style={styles.statsDivider} />
-                <Stat label="Following" value={currentUserData.following} />
+                <Stat
+                  label="Following"
+                  value={currentUserData.following}
+                  onClick={() => {
+                    setOpenList("following");
+                    if (!followers.length && !following.length && currentUserData.uid) {
+                      loadFollowLists(currentUserData.uid);
+                    }
+                  }}
+                />
               </div>
             </div>
 
@@ -210,26 +262,114 @@ const HomeFeed = () => {
           </aside>
         </div>
       </div>
+
+      <Modal
+        open={openList !== null}
+        onClose={() => setOpenList(null)}
+        title={openList === "following" ? "Following" : "Followers"}
+      >
+        <FollowList
+          users={openList === "following" ? following : followers}
+          currentUserId={currentUserData.uid}
+          emptyText={
+            openList === "following"
+              ? "You're not following anyone yet."
+              : "You don't have any followers yet."
+          }
+        />
+      </Modal>
     </div>
   );
 };
 
-const Stat = ({ label, value }) => (
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-    <span style={{ ...type.headline, color: colors.text }}>{value}</span>
-    <span
+const Stat = ({ label, value, onClick }) => {
+  const clickable = typeof onClick === "function";
+  return (
+    <button
+      type="button"
+      onClick={clickable ? onClick : undefined}
       style={{
-        ...type.caption,
-        color: colors.textFaint,
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        marginTop: "2px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        background: "transparent",
+        border: "none",
+        padding: clickable ? "6px 14px" : 0,
+        borderRadius: "12px",
+        cursor: clickable ? "pointer" : "default",
+        fontFamily: "inherit",
+        transition: "background 220ms cubic-bezier(.2,.8,.2,1)",
+      }}
+      onMouseEnter={(e) => {
+        if (clickable) e.currentTarget.style.background = colors.glassBg;
+      }}
+      onMouseLeave={(e) => {
+        if (clickable) e.currentTarget.style.background = "transparent";
       }}
     >
-      {label}
-    </span>
-  </div>
-);
+      <span style={{ ...type.headline, color: colors.text }}>{value}</span>
+      <span
+        style={{
+          ...type.caption,
+          color: colors.textFaint,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginTop: "2px",
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+};
+
+const FollowList = ({ users, currentUserId, emptyText }) => {
+  if (!users.length) {
+    return (
+      <EmptyState title="Nothing here yet" body={emptyText} />
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: spacing.sm }}>
+      {users.map((user) => (
+        <div
+          key={user.uid}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: spacing.md,
+            padding: spacing.md,
+            background: colors.glassBgSoft,
+            border: `1px solid ${colors.glassBorder}`,
+            borderRadius: radius.md,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: spacing.md,
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            <Avatar user={user} size={38} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...type.callout, color: colors.text, fontWeight: 600 }}>
+                {user.name}
+              </div>
+              <div style={{ ...type.footnote, color: colors.textFaint }}>
+                {user.email}
+              </div>
+            </div>
+          </div>
+          <FollowButton targetUserId={user.uid} currentUserId={currentUserId} />
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const styles = {
   placeholder: {
@@ -253,11 +393,6 @@ const styles = {
   feedHeader: {
     marginBottom: spacing.xl,
   },
-  emptyState: {
-    ...glassCard({ padded: false }),
-    padding: spacing["2xl"],
-    textAlign: "center",
-  },
   postsContainer: {
     display: "flex",
     flexDirection: "column",
@@ -276,24 +411,6 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     textAlign: "center",
-  },
-  avatarRing: {
-    padding: "3px",
-    borderRadius: "50%",
-    background: gradients.brand,
-    marginBottom: spacing.md,
-  },
-  avatar: {
-    width: "72px",
-    height: "72px",
-    borderRadius: "50%",
-    background: colors.surface,
-    color: colors.text,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "28px",
-    fontWeight: 700,
   },
   profileInfo: {
     marginBottom: spacing.lg,

@@ -84,10 +84,10 @@ exports.getAllConversations = async (req, res) => {
   const userId = req.user.uid;
 
   try {
-    // For each conversation partner, pick the latest message across both
-    // send directions. The previous query reused `m` across two OPTIONAL
-    // MATCHes and grouped per-row, returning incorrect results when both
-    // sides had sent messages.
+    // For each conversation partner: latest message across both directions,
+    // plus an unread count (messages from `other` to `me` newer than the
+    // LAST_READ_AT timestamp). If no LAST_READ_AT exists, all received
+    // messages are considered unread.
     const result = await session.run(
       `
       MATCH (me:User {uid:$userId})
@@ -100,24 +100,41 @@ exports.getAllConversations = async (req, res) => {
         MATCH (other:User)-[:SENT]->(m:Message)-[:TO]->(me)
         RETURN other, m
       }
-      WITH other, m
+      WITH me, other, m
       ORDER BY m.timestamp DESC
-      WITH other, head(collect(m)) AS lastMessage
+      WITH me, other, head(collect(m)) AS lastMessage
+      OPTIONAL MATCH (me)-[r:LAST_READ_AT]->(other)
+      WITH me, other, lastMessage, r.ts AS lastReadTs
+      CALL {
+        WITH me, other, lastReadTs
+        MATCH (other)-[:SENT]->(im:Message)-[:TO]->(me)
+        WHERE lastReadTs IS NULL OR im.timestamp > lastReadTs
+        RETURN count(im) AS unreadCount
+      }
       RETURN other.uid AS uid,
              other.name AS name,
+             other.photoURL AS photoURL,
              lastMessage.text AS lastMessage,
-             lastMessage.timestamp AS timestamp
+             lastMessage.timestamp AS timestamp,
+             unreadCount
       ORDER BY lastMessage.timestamp DESC
       `,
       { userId }
     );
 
-    const conversations = result.records.map(record => ({
-      uid: record.get("uid"),
-      name: record.get("name"),
-      lastMessage: record.get("lastMessage"),
-      timestamp: toIsoString(record.get("timestamp"))
-    }));
+    const conversations = result.records.map(record => {
+      const raw = record.get("unreadCount");
+      const unread =
+        raw && typeof raw === "object" && "low" in raw ? raw.low : Number(raw) || 0;
+      return {
+        uid: record.get("uid"),
+        photoURL: record.get("photoURL"),
+        name: record.get("name"),
+        lastMessage: record.get("lastMessage"),
+        timestamp: toIsoString(record.get("timestamp")),
+        unreadCount: unread,
+      };
+    });
 
     res.json(conversations);
   } catch (e) {
@@ -128,8 +145,40 @@ exports.getAllConversations = async (req, res) => {
   }
 };
 
+// Mark a conversation as read up to "now". Upserts the LAST_READ_AT
+// relationship from the caller (me) to the friend.
+exports.markRead = async (req, res) => {
+  const session = driver.session();
+  const me = req.user.uid;
+  const friend = req.params.friendId;
+
+  if (!friend) {
+    return res.status(400).json({ error: "friendId is required" });
+  }
+
+  try {
+    await session.run(
+      `
+      MATCH (me:User {uid:$me})
+      MATCH (friend:User {uid:$friend})
+      MERGE (me)-[r:LAST_READ_AT]->(friend)
+      SET r.ts = datetime()
+      RETURN r.ts AS ts
+      `,
+      { me, friend }
+    );
+    res.status(204).end();
+  } catch (e) {
+    console.error("markRead failed:", e.message);
+    res.status(503).json({ error: "Could not mark as read" });
+  } finally {
+    await session.close();
+  }
+};
+
 module.exports = {
   sendMessage: exports.sendMessage,
   getChat: exports.getChat,
-  getAllConversations: exports.getAllConversations
+  getAllConversations: exports.getAllConversations,
+  markRead: exports.markRead,
 };

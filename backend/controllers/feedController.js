@@ -20,6 +20,7 @@ const getFeed = async (req, res) => {
       WITH me, author, p, count(liker) AS likeCount
       RETURN author.uid AS authorUid,
              author.name AS authorName,
+             author.photoURL AS authorPhotoURL,
              p,
              likeCount,
              EXISTS { (me)-[:LIKED]->(p) } AS isLiked,
@@ -42,6 +43,7 @@ const getFeed = async (req, res) => {
         author: {
           uid: record.get("authorUid"),
           name: record.get("authorName"),
+          photoURL: record.get("authorPhotoURL"),
           isFollowing: record.get("isFollowing"),
         },
       };

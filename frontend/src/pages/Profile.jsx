@@ -3,13 +3,17 @@ import {
   FiEdit2 as Pencil,
   FiX as X,
   FiCheck as Check,
-  FiChevronDown as ChevronDown,
-  FiChevronUp as ChevronUp,
+  FiCamera as Camera,
 } from "react-icons/fi";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebaseConfig";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet, apiPut } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
 import FollowButton from "../components/FollowButton";
+import Modal from "../components/Modal";
+import EmptyState from "../components/EmptyState";
+import Avatar from "../components/Avatar";
 import {
   colors,
   spacing,
@@ -19,7 +23,6 @@ import {
   button,
   glassCard,
   tag,
-  gradients,
   transition,
   pageShell,
   pageContent,
@@ -31,8 +34,6 @@ const PREDEFINED_INTERESTS = [
   "Sports", "Movies", "Nature", "Writing", "Dancing",
 ];
 
-const initialOf = (name) => (name ? name.trim().charAt(0).toUpperCase() : "U");
-
 const Profile = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -42,8 +43,10 @@ const Profile = () => {
   const [saving, setSaving] = useState(false);
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
-  const [showFollowers, setShowFollowers] = useState(false);
-  const [showFollowing, setShowFollowing] = useState(false);
+  // null | "followers" | "following"
+  const [openList, setOpenList] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState("");
 
   useEffect(() => {
     if (currentUser) {
@@ -94,6 +97,36 @@ const Profile = () => {
     }
   };
 
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setPhotoError("Avatar must be under 4MB");
+      return;
+    }
+    setPhotoError("");
+    setUploadingPhoto(true);
+    try {
+      const path = `avatars/${currentUser.uid}/${Date.now()}-${file.name}`;
+      const snap = await uploadBytes(ref(storage, path), file);
+      const url = await getDownloadURL(snap.ref);
+      setProfile((prev) => ({ ...prev, photoURL: url }));
+      // Persist immediately so other surfaces (feed, chat, etc.) start
+      // showing the new avatar without waiting for a full Save.
+      await apiPut(`/profile/${currentUser.uid}`, {
+        name: profile.name,
+        bio: profile.bio,
+        interests: profile.interests,
+        photoURL: url,
+      });
+    } catch (err) {
+      console.error("Avatar upload failed:", err.message);
+      setPhotoError("Couldn't upload avatar. Try again.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const toggleInterest = (interest) => {
     setProfile((prev) => ({
       ...prev,
@@ -124,10 +157,45 @@ const Profile = () => {
           }}
         >
           <header style={styles.header}>
-            <div style={styles.avatarWrap}>
-              <div style={styles.avatar}>
-                {initialOf(profile.name || currentUser?.displayName)}
-              </div>
+            <div style={{ position: "relative", display: "inline-block" }}>
+              <Avatar
+                user={{
+                  name: profile.name || currentUser?.displayName,
+                  photoURL: profile.photoURL,
+                }}
+                size={82}
+                ring
+              />
+              {editing && (
+                <label
+                  style={styles.avatarUploadBadge}
+                  title="Change avatar"
+                  aria-label="Change avatar"
+                >
+                  {uploadingPhoto ? "…" : <Camera size={14} />}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoChange}
+                    disabled={uploadingPhoto}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              )}
+              {photoError && editing && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: "6px",
+                    fontSize: "12px",
+                    color: colors.danger,
+                  }}
+                >
+                  {photoError}
+                </div>
+              )}
             </div>
             <div style={styles.headerInfo}>
               <h1 style={{ ...type.title1, color: colors.text }}>
@@ -137,9 +205,17 @@ const Profile = () => {
                 {currentUser?.email}
               </p>
               <div style={styles.statsRow}>
-                <Stat label="Followers" value={followers.length} />
+                <Stat
+                  label="Followers"
+                  value={followers.length}
+                  onClick={() => setOpenList("followers")}
+                />
                 <span style={styles.statsDivider} />
-                <Stat label="Following" value={following.length} />
+                <Stat
+                  label="Following"
+                  value={following.length}
+                  onClick={() => setOpenList("following")}
+                />
                 <span style={styles.statsDivider} />
                 <Stat label="Interests" value={profile.interests.length} />
               </div>
@@ -260,26 +336,23 @@ const Profile = () => {
           )}
         </section>
 
-        {/* Followers */}
-        <CollapsibleList
-          title="Followers"
-          users={followers}
-          open={showFollowers}
-          onToggle={() => setShowFollowers((v) => !v)}
-          emptyText="No followers yet"
-          currentUserId={currentUser.uid}
-        />
-
-        {/* Following */}
-        <CollapsibleList
-          title="Following"
-          users={following}
-          open={showFollowing}
-          onToggle={() => setShowFollowing((v) => !v)}
-          emptyText="Not following anyone yet"
-          currentUserId={currentUser.uid}
-        />
       </div>
+
+      <Modal
+        open={openList !== null}
+        onClose={() => setOpenList(null)}
+        title={openList === "following" ? "Following" : "Followers"}
+      >
+        <UserList
+          users={openList === "following" ? following : followers}
+          currentUserId={currentUser.uid}
+          emptyText={
+            openList === "following"
+              ? "You're not following anyone yet."
+              : "You don't have any followers yet."
+          }
+        />
+      </Modal>
     </div>
   );
 };
@@ -300,68 +373,72 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-const Stat = ({ label, value }) => (
-  <div style={{ display: "flex", flexDirection: "column" }}>
-    <span style={{ ...type.headline, color: colors.text }}>{value}</span>
-    <span style={{ ...type.caption, color: colors.textFaint, textTransform: "uppercase" }}>
-      {label}
-    </span>
-  </div>
-);
-
-const CollapsibleList = ({ title, users, open, onToggle, emptyText, currentUserId }) => (
-  <section
-    style={{
-      ...glassCard({ padded: false }),
-      padding: spacing.xl,
-      marginBottom: spacing.xl,
-    }}
-  >
-    <header
+const Stat = ({ label, value, onClick }) => {
+  const clickable = typeof onClick === "function";
+  return (
+    <button
+      type="button"
+      onClick={clickable ? onClick : undefined}
       style={{
         display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        background: "transparent",
+        border: "none",
+        padding: clickable ? "6px 10px" : 0,
+        marginLeft: clickable ? "-10px" : 0,
+        borderRadius: "10px",
+        cursor: clickable ? "pointer" : "default",
+        color: "inherit",
+        fontFamily: "inherit",
+        textAlign: "left",
+        transition: transition(["background"]),
+      }}
+      onMouseEnter={(e) => {
+        if (clickable) e.currentTarget.style.background = colors.glassBg;
+      }}
+      onMouseLeave={(e) => {
+        if (clickable) e.currentTarget.style.background = "transparent";
       }}
     >
-      <h3 style={{ ...type.title3, color: colors.text }}>
-        {title} <span style={{ color: colors.textFaint, fontWeight: 500 }}>({users.length})</span>
-      </h3>
-      <button
-        type="button"
-        onClick={onToggle}
-        style={button("ghost", { size: "sm" })}
-      >
-        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        {open ? "Hide" : "Show"}
-      </button>
-    </header>
-    {open && (
-      <div style={{ marginTop: spacing.lg, display: "flex", flexDirection: "column", gap: spacing.sm }}>
-        {users.length > 0 ? (
-          users.map((user) => (
-            <div key={user.uid} style={styles.userItem}>
-              <div style={styles.userLeft}>
-                <div style={styles.smallAvatar}>{initialOf(user.name)}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ ...type.callout, color: colors.text, fontWeight: 600 }}>
-                    {user.name}
-                  </div>
-                  <div style={{ ...type.footnote, color: colors.textFaint }}>
-                    {user.email}
-                  </div>
-                </div>
+      <span style={{ ...type.headline, color: colors.text }}>{value}</span>
+      <span style={{ ...type.caption, color: colors.textFaint, textTransform: "uppercase" }}>
+        {label}
+      </span>
+    </button>
+  );
+};
+
+const UserList = ({ users, currentUserId, emptyText }) => {
+  if (!users.length) {
+    return (
+      <EmptyState
+        title="Nothing here yet"
+        body={emptyText}
+      />
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: spacing.sm }}>
+      {users.map((user) => (
+        <div key={user.uid} style={styles.userItem}>
+          <div style={styles.userLeft}>
+            <Avatar user={user} size={38} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...type.callout, color: colors.text, fontWeight: 600 }}>
+                {user.name}
               </div>
-              <FollowButton targetUserId={user.uid} currentUserId={currentUserId} />
+              <div style={{ ...type.footnote, color: colors.textFaint }}>
+                {user.email}
+              </div>
             </div>
-          ))
-        ) : (
-          <div style={styles.emptyState}>{emptyText}</div>
-        )}
-      </div>
-    )}
-  </section>
-);
+          </div>
+          <FollowButton targetUserId={user.uid} currentUserId={currentUserId} />
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const styles = {
   placeholder: {
@@ -379,23 +456,22 @@ const styles = {
     borderBottom: `1px solid ${colors.glassBorder}`,
     flexWrap: "wrap",
   },
-  avatarWrap: {
-    padding: "3px",
+  avatarUploadBadge: {
+    position: "absolute",
+    right: "-2px",
+    bottom: "-2px",
+    width: "30px",
+    height: "30px",
     borderRadius: "50%",
-    background: gradients.brand,
-    flexShrink: 0,
-  },
-  avatar: {
-    width: "82px",
-    height: "82px",
-    borderRadius: "50%",
-    background: colors.surface,
+    background: colors.primary,
     color: colors.text,
-    display: "flex",
+    display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "30px",
-    fontWeight: 700,
+    cursor: "pointer",
+    border: `2px solid ${colors.bg}`,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+    transition: transition(["transform", "background"]),
   },
   headerInfo: {
     flex: 1,
@@ -500,19 +576,6 @@ const styles = {
     gap: spacing.md,
     flex: 1,
     minWidth: 0,
-  },
-  smallAvatar: {
-    width: "38px",
-    height: "38px",
-    borderRadius: "50%",
-    background: gradients.brand,
-    color: colors.text,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 700,
-    fontSize: "14px",
-    flexShrink: 0,
   },
 };
 
