@@ -43,16 +43,20 @@ exports.getChat = async (req, res) => {
   const friend = req.params.friendId;
 
   try {
+    // ORDER BY after a top-level UNION only applies to the last leg in
+    // Cypher, which interleaved sent vs. received messages incorrectly.
+    // Wrapping the union in a CALL {} subquery lets us sort the merged
+    // result by timestamp.
     const result = await session.run(
       `
-      MATCH (u1:User {uid:$me})-[:SENT]->(m)-[:TO]->(u2:User {uid:$friend})
-      RETURN m.id AS id, m.text AS text, m.timestamp AS timestamp, $me AS sender
-
-      UNION
-
-      MATCH (u2:User {uid:$friend})-[:SENT]->(m)-[:TO]->(u1:User {uid:$me})
-      RETURN m.id AS id, m.text AS text, m.timestamp AS timestamp, $friend AS sender
-
+      CALL {
+        MATCH (u1:User {uid:$me})-[:SENT]->(m:Message)-[:TO]->(u2:User {uid:$friend})
+        RETURN m, $me AS sender
+        UNION
+        MATCH (u2:User {uid:$friend})-[:SENT]->(m:Message)-[:TO]->(u1:User {uid:$me})
+        RETURN m, $friend AS sender
+      }
+      RETURN m.id AS id, m.text AS text, m.timestamp AS timestamp, sender
       ORDER BY timestamp
       `,
       { me, friend }
