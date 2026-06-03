@@ -4,12 +4,14 @@ import {
   FiSend as Send,
   FiMessageCircle as MessageCircle,
   FiPlus as Plus,
+  FiChevronLeft as ChevronLeft,
 } from "react-icons/fi";
 import EmptyState from "../components/EmptyState";
 import Avatar from "../components/Avatar";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useNavigate } from "react-router-dom";
+import useIsMobile from "../hooks/useIsMobile";
 import {
   colors,
   spacing,
@@ -59,6 +61,7 @@ const Chat = () => {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   // Polling reads selectedChat from a ref so the interval callbacks see the
   // latest selection without restarting the interval each switch.
@@ -236,17 +239,33 @@ const Chat = () => {
 
   if (loading) {
     return (
-      <div data-page-shell style={styles.shell}>
+      <div
+        data-page-shell-fixed
+        className={isMobile ? "iris-chat-shell-mobile" : undefined}
+        style={styles.shell(isMobile)}
+      >
         <div style={styles.placeholder}>Loading conversations…</div>
       </div>
     );
   }
 
+  // Mobile: show one panel at a time. selectedChat null → list, set → chat.
+  const showList = !isMobile || !selectedChat;
+  const showChat = !isMobile || !!selectedChat;
+
   return (
-    <div data-page-shell style={styles.shell}>
-      <div style={styles.layout}>
+    <div
+      data-page-shell-fixed
+      className={isMobile ? "iris-chat-shell-mobile" : undefined}
+      style={styles.shell(isMobile)}
+    >
+      <div
+        className={isMobile ? "iris-chat-layout-mobile" : undefined}
+        style={styles.layout(isMobile)}
+      >
         {/* ---------- Left: Conversations + new chat ---------- */}
-        <aside style={styles.leftPanel}>
+        {showList && (
+        <aside style={styles.leftPanel(isMobile)}>
           <div style={styles.leftHeader}>
             <h2 style={{ ...type.title2, color: colors.text }}>Messages</h2>
           </div>
@@ -364,12 +383,24 @@ const Chat = () => {
             )}
           </div>
         </aside>
+        )}
 
         {/* ---------- Right: Active chat ---------- */}
-        <main style={styles.chatPanel}>
+        {showChat && (
+        <main style={styles.chatPanel(isMobile)}>
           {selectedChat ? (
             <>
               <header style={styles.chatHeader}>
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChat(null)}
+                    style={styles.backButton}
+                    aria-label="Back to conversations"
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                )}
                 <Avatar user={selectedChat.user} size={40} />
                 <div>
                   <div style={{ ...type.headline, color: colors.text }}>
@@ -462,39 +493,81 @@ const Chat = () => {
             </div>
           )}
         </main>
+        )}
       </div>
     </div>
   );
 };
 
+const MOBILE_TAB_BAR = 72; // matches Navbar mobileBar height
+
 const styles = {
-  shell: {
-    marginLeft: "70px",
-    height: "100vh",
-    minHeight: "100vh",
-    padding: spacing.lg,
-    boxSizing: "border-box",
-  },
+  shell: (mobile) =>
+    mobile
+      ? {
+          // height + min-height come from the .iris-chat-shell-mobile class
+          // (provides a vh fallback for older iOS Safari that doesn't know dvh).
+          marginLeft: 0,
+          padding: 0,
+          boxSizing: "border-box",
+        }
+      : {
+          marginLeft: "70px",
+          height: "100vh",
+          minHeight: "100vh",
+          padding: spacing.lg,
+          boxSizing: "border-box",
+        },
   placeholder: {
     ...type.body,
     color: colors.textFaint,
     textAlign: "center",
     padding: spacing["2xl"],
   },
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "340px minmax(0, 1fr)",
-    gap: spacing.lg,
-    height: "100%",
-  },
+  layout: (mobile) =>
+    mobile
+      ? {
+          // height + min-height come from .iris-chat-layout-mobile class so
+          // we get both dvh and vh fallbacks.
+          display: "flex",
+          flexDirection: "column",
+          width: "100%",
+        }
+      : {
+          display: "grid",
+          gridTemplateColumns: "340px minmax(0, 1fr)",
+          gap: spacing.lg,
+          height: "100%",
+        },
 
   // --- Left panel ---
-  leftPanel: {
+  leftPanel: (mobile) => ({
     ...glassCard({ padded: false }),
     padding: 0,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
+    flex: mobile ? "1 1 0" : undefined,
+    minHeight: mobile ? 0 : undefined,
+    borderRadius: mobile ? 0 : undefined,
+    border: mobile ? "none" : undefined,
+    boxShadow: mobile ? "none" : undefined,
+    width: mobile ? "100%" : undefined,
+    height: mobile ? "100%" : undefined,
+  }),
+  backButton: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    background: colors.glassBg,
+    border: `1px solid ${colors.glassBorder}`,
+    color: colors.text,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    transition: transition(["background"]),
   },
   leftHeader: {
     padding: `${spacing.lg} ${spacing.lg} ${spacing.md}`,
@@ -524,7 +597,8 @@ const styles = {
     transition: transition(["border-color"]),
   },
   scrollable: {
-    flex: 1,
+    flex: "1 1 0",
+    minHeight: 0,
     overflowY: "auto",
     padding: `0 ${spacing.sm} ${spacing.md}`,
   },
@@ -645,13 +719,20 @@ const styles = {
   },
 
   // --- Right panel ---
-  chatPanel: {
+  chatPanel: (mobile) => ({
     ...glassCard({ padded: false }),
     padding: 0,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-  },
+    flex: mobile ? "1 1 0" : undefined,
+    minHeight: mobile ? 0 : undefined,
+    borderRadius: mobile ? 0 : undefined,
+    border: mobile ? "none" : undefined,
+    boxShadow: mobile ? "none" : undefined,
+    width: mobile ? "100%" : undefined,
+    height: mobile ? "100%" : undefined,
+  }),
   chatHeader: {
     display: "flex",
     alignItems: "center",
@@ -660,7 +741,11 @@ const styles = {
     borderBottom: `1px solid ${colors.glassBorder}`,
   },
   messagesContainer: {
-    flex: 1,
+    // flex-basis 0 + min-height 0 is the canonical pair to make a flex
+    // child both grow into available space AND shrink so overflow-y: auto
+    // actually scrolls (otherwise content size pushes siblings off-screen).
+    flex: "1 1 0",
+    minHeight: 0,
     overflowY: "auto",
     padding: spacing.xl,
     display: "flex",

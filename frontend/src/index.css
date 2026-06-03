@@ -213,12 +213,43 @@ textarea::selection {
 
 /* Mobile rules. Pages set marginLeft:70 inline to clear the desktop
    sidebar; on small screens the Navbar collapses to a bottom tab bar
-   so the offset must go. Pages opt in via data-page-shell attribute. */
+   so the offset must go. Pages opt in via data-page-shell. Scrolling
+   pages get bottom padding so the last item clears the tab bar; the
+   safe-area-inset handles the iOS home indicator. */
 @media (max-width: 768px) {
   [data-page-shell] {
     margin-left: 0 !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
-    padding-bottom: 88px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0)) !important;
   }
+
+  /* Full-viewport pages (Chat) opt out of the scroll-padding above and
+     instead reserve exactly the tab bar height in their own layout. */
+  [data-page-shell-fixed] {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 0 !important;
+  }
+}
+
+/* Belt-and-suspenders sidebar hide: even if the JS hook ever misfires,
+   any element tagged data-hide-under-960 disappears at that breakpoint. */
+@media (max-width: 960px) {
+  [data-hide-under-960] {
+    display: none !important;
+  }
+}
+
+/* Chat viewport math. Older iOS Safari ignores `dvh` entirely, so we
+   declare both — modern browsers override with the second value. */
+.iris-chat-shell-mobile {
+  height: 100vh;
+  height: 100dvh;
+}
+.iris-chat-layout-mobile {
+  height: calc(100vh - 72px);
+  height: calc(100dvh - 72px);
+  min-height: 0;
 }

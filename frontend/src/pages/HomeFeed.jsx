@@ -11,6 +11,7 @@ import Modal from "../components/Modal";
 import FollowButton from "../components/FollowButton";
 import Avatar from "../components/Avatar";
 import { useAuth } from "../contexts/AuthContext";
+import useIsMobile from "../hooks/useIsMobile";
 import {
   colors,
   spacing,
@@ -33,6 +34,9 @@ const HomeFeed = () => {
     followers: 0,
     following: 0,
   });
+  // Hide the right sidebar (profile card + suggestions) under 960px so the
+  // feed gets the full content width.
+  const hideSidebar = useIsMobile(960);
   // null | "followers" | "following" — opens the corresponding list modal
   const [openList, setOpenList] = useState(null);
   const [followers, setFollowers] = useState([]);
@@ -173,9 +177,9 @@ const HomeFeed = () => {
   return (
     <div data-page-shell style={pageShell()}>
       <div style={pageContent({ maxWidth: 1180 })}>
-        <div style={styles.contentLayout}>
+        <div style={styles.contentLayout(hideSidebar)}>
           {/* Main feed column */}
-          <main style={styles.feed}>
+          <main style={styles.feed(hideSidebar)}>
             <header style={styles.feedHeader}>
               <h1 style={{ ...type.largeTitle, color: colors.text }}>Home</h1>
               <p
@@ -211,8 +215,11 @@ const HomeFeed = () => {
             )}
           </main>
 
-          {/* Right sidebar — hides under 1024px via inline conditional */}
-          <aside style={styles.sidebar}>
+          {/* Right sidebar — hidden under 960px so the feed gets full width.
+              CSS belt-and-suspenders via data-hide-under-960 guarantees the
+              hide even if the JS hook misfires. */}
+          {!hideSidebar && (
+          <aside data-hide-under-960 style={styles.sidebar}>
             <div style={styles.profileCard}>
               <Avatar
                 user={{
@@ -260,6 +267,7 @@ const HomeFeed = () => {
 
             <SuggestedUsers users={suggestedUsers} />
           </aside>
+          )}
         </div>
       </div>
 
@@ -378,18 +386,21 @@ const styles = {
     padding: spacing["2xl"],
     textAlign: "center",
   },
-  contentLayout: {
+  contentLayout: (single) => ({
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 320px",
+    gridTemplateColumns: single ? "minmax(0, 1fr)" : "minmax(0, 1fr) 320px",
     gap: spacing.xl,
     alignItems: "start",
-  },
-  feed: {
+  }),
+  feed: (single) => ({
     minWidth: 0,
-    maxWidth: "640px",
+    // On phones the sidebar is gone — let the feed claim the full content
+    // width so post cards don't look like narrow floating cards. On desktop
+    // keep the 640 cap so posts stay readable at large viewports.
+    maxWidth: single ? "none" : "640px",
     margin: "0 auto",
     width: "100%",
-  },
+  }),
   feedHeader: {
     marginBottom: spacing.xl,
   },

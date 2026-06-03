@@ -3,6 +3,7 @@ import { FiHeart } from "react-icons/fi";
 import { FaHeart } from "react-icons/fa";
 import FollowButton from "./FollowButton";
 import Avatar from "./Avatar";
+import useIsMobile from "../hooks/useIsMobile";
 import {
   colors,
   glassCard,
@@ -15,16 +16,29 @@ import {
 const PostCard = ({ post, currentUserId, onLikeToggle }) => {
   const [hovered, setHovered] = useState(false);
   const [pulseKey, setPulseKey] = useState(0);
+  const isMobile = useIsMobile();
 
   const handleLikeToggle = () => {
     setPulseKey((k) => k + 1);
     onLikeToggle(post.id);
   };
 
+  // On phones, drop the glass backdrop-filter (heavy + lets the brand
+  // vignette show through, making cards look thin/translucent) in favor
+  // of a solid surface with a single hairline border.
+  const surface = isMobile
+    ? {
+        background: colors.surface,
+        border: `1px solid ${colors.glassBorder}`,
+        borderRadius: radius.lg,
+        boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset",
+      }
+    : glassCard({ padded: false });
+
   return (
     <article
       style={{
-        ...glassCard({ padded: false }),
+        ...surface,
         marginBottom: spacing.xl,
         padding: spacing.xl,
         transform: hovered ? "translateY(-1px)" : "translateY(0)",
