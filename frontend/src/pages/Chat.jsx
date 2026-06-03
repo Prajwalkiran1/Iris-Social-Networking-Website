@@ -93,6 +93,16 @@ const Chat = () => {
     }
   }, []);
 
+  const markConversationRead = useCallback(async (otherUid) => {
+    try {
+      await apiPost(`/messages/read/${otherUid}`);
+    } catch (error) {
+      // Non-fatal — UI keeps working, just the badge won't clear on the
+      // server side. Don't surface to the user.
+      console.error("Failed to mark conversation as read:", error.message);
+    }
+  }, []);
+
   useEffect(() => {
     if (!currentUser) {
       navigate("/");
@@ -153,16 +163,6 @@ const Chat = () => {
     );
     setFilteredUsers(filtered);
   }, [searchTerm, users]);
-
-  const markConversationRead = useCallback(async (otherUid) => {
-    try {
-      await apiPost(`/messages/read/${otherUid}`);
-    } catch (error) {
-      // Non-fatal — UI keeps working, just the badge won't clear on the
-      // server side. Don't surface to the user.
-      console.error("Failed to mark conversation as read:", error.message);
-    }
-  }, []);
 
   const selectChat = async (conversation) => {
     setSelectedChat(conversation);
