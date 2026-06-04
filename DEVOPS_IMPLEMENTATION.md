@@ -1,224 +1,193 @@
-# Iris — DevOps / CI-CD Implementation
+# Iris — Local Jenkins CI/CD Demo
 
-How the Iris social app is built, tested, deployed, and monitored through a
-**Jenkins** pipeline, with the supporting infrastructure captured as code so the
-whole setup is reproducible. This document is the end-to-end reference for the
-demonstration and viva.
+A fully self-contained **Jenkins** CI/CD pipeline that builds, tests, deploys,
+and monitors the Iris app **entirely on your laptop** — no cloud accounts
+needed. This is the artifact for the course demonstration / viva.
+
+> **Scope:** this lives on the **`jenkins-demo`** branch only. The `main` branch
+> and the live cloud deployment (Render + Vercel) are intentionally **Jenkins-free**
+> and unchanged — the production app keeps auto-deploying from `main` as before.
 
 ---
 
 ## 1. System architecture
 
 ```
-                            ┌──────────────────────────────┐
-   git push (main)          │   Jenkins controller (Docker) │
-  ───────────────────────▶  │   infra/jenkins/ — Node 20,   │
-   GitHub webhook / poll     │   npm, curl, jq baked in      │
-                            └───────────────┬───────────────┘
-                                            │  Jenkinsfile pipeline
-        ┌───────────────────────────────────┼─────────────────────────────────┐
-        ▼               ▼                    ▼                  ▼               ▼
-    Checkout   Install (∥)   Test (∥)   Build frontend     Deploy          Monitor
-                                                          │   │              │
-                            POST Render deploy hook  ◀────┘   └──▶ POST Vercel│deploy hook
-                                     │                                   │     │
-                                     ▼                                   ▼     │ poll /api/health
-                        ┌────────────────────────┐        ┌──────────────────┐│ until "db":true
-                        │  Render (backend API)  │        │  Vercel (frontend)││
-                        │  iris-backend web svc  │        │  React SPA build  ││
-                        │  render.yaml Blueprint │        └──────────────────┘│
-                        └───────────┬────────────┘ ◀───────────────────────────┘
-                                    │ neo4j+s://
-                                    ▼
-                        ┌────────────────────────┐
-                        │   Neo4j Aura (graph DB) │
-                        └────────────────────────┘
+   git push (jenkins-demo)        ┌────────────────────────────────────┐
+  ─────────────────────────────▶  │  Jenkins controller (Docker)        │
+   Poll SCM / Build Now            │  infra/jenkins/ — Node 20, npm,     │
+                                   │  curl, jq, Docker CLI baked in      │
+                                   │  mounts /var/run/docker.sock        │
+                                   └──────────────────┬──────────────────┘
+                                                      │ Jenkinsfile pipeline
+        ┌──────────────┬──────────────┬───────────────┼───────────────┬───────────────┐
+        ▼              ▼              ▼                ▼               ▼               ▼
+    Checkout    Install (∥)     Test (∥)      Build frontend      Deploy          Monitor
+                                                                     │               │
+                                            docker compose up -d --build             │ poll
+                                                                     ▼               │ host.docker.internal
+                                            ┌──────── infra/app/docker-compose.yml ──┐│ :5001/api/health
+                                            │  Neo4j  ◀──  backend(:5001) ◀── frontend││ until "db":true
+                                            │  :7687       node/express      nginx :8081
+                                            └─────────────────────────────────────────┘
+                                                            │
+                                                  app live at http://localhost:8081
 ```
 
-- **Jenkins** is the single orchestrator (course requirement: Jenkins-exclusive).
-  It runs in Docker on the developer laptop and drives all four pipeline stages.
-- **Render** hosts the Express backend; **Vercel** hosts the React/Vite SPA;
-  **Neo4j Aura** is the managed graph database.
-- Jenkins never holds platform passwords — it triggers deploys via **Deploy Hook
-  URLs** (opaque, revocable) stored as Jenkins secret-text credentials.
-
-> A GitHub Actions workflow (`.github/workflows/`) also exists from earlier
-> work; it is **not** the graded pipeline and is left in place only as a
-> secondary keep-warm ping. All CI/CD criteria below are satisfied by Jenkins.
+Everything runs as Docker containers on one machine:
+- **Jenkins** orchestrates the pipeline and, via the **mounted host Docker
+  socket** ("Docker-outside-of-Docker"), brings the app stack up as sibling
+  containers on the host.
+- The **app stack** (`infra/app/`) is Neo4j + the Express backend + an
+  nginx-served React build — the same code that runs in production.
+- A standalone **evidence dashboard** (`infra/dashboard/`, on port 4000) reads a
+  shared `evidence` volume that each pipeline run writes to, giving a polished
+  build-history view of every stage's status + logs (criterion 4 evidence).
 
 ---
 
 ## 2. The pipeline (`Jenkinsfile`)
 
-Declarative pipeline, runs on `agent any` (the custom controller image already
-has every tool). Stages are logically gated so they only run when it makes sense.
+| Stage | What it does | How it connects |
+|-------|--------------|-----------------|
+| **Checkout** | `checkout scm` | pulls the triggering commit |
+| **Install** | `npm ci` for backend + frontend, **parallel** | clean installs |
+| **Test** | `npm test` backend (Jest+Supertest) + frontend (Vitest), **parallel** | a failure stops the pipeline before deploy |
+| **Build frontend** | `npm run build` (Vite); archives `dist` | proves the bundle builds |
+| **Deploy** | `docker compose -f infra/app/docker-compose.yml up -d --build` | rebuilds images from the checkout and starts the stack |
+| **Seed** *(optional)* | `docker compose exec -T backend node scripts/seed.js` | idempotent demo graph in the stack's Neo4j |
+| **Monitor** | polls `host.docker.internal:5001/api/health` until `{"ok":true,"db":true}` | **verifies the deploy actually came up healthy**; fails the build otherwise |
 
-| Stage | What it does | Notes |
-|-------|--------------|-------|
-| **Checkout** | `checkout scm` — pulls the commit that triggered the build | |
-| **Install** | `npm ci` for backend **and** frontend, in **parallel** | clean, lockfile-exact installs |
-| **Test** | `npm test` for backend (Jest+Supertest) **and** frontend (Vitest), in **parallel** | tests mock Firebase + Neo4j → **no secrets needed** |
-| **Build frontend** | `npm run build` (Vite) → archives `frontend/dist/**` | bundle uses dummy `VITE_*` fallbacks in CI |
-| **Deploy** | `POST` the Render + Vercel deploy hooks via `curl` | gated by `RUN_DEPLOY`; hooks pulled from credentials |
-| **Seed** *(optional)* | `node scripts/seed.js` to rebuild the demo graph | gated by `RUN_SEED`; idempotent (MERGE-based) |
-| **Monitor** | polls `/api/health` until `{"ok":true,"db":true}` | gated by `RUN_DEPLOY`; **fails the build** if the backend never goes healthy |
+**Parameters:** `RUN_DEPLOY` (default `true`) and `RUN_SEED` (default `false`).
+Setting `RUN_DEPLOY=false` makes it a pure CI run (Checkout → Build) with
+Deploy/Monitor skipped.
 
-**How the stages connect (criterion 1):** a failing Test stops the pipeline
-before anything ships; Build must succeed before Deploy; Deploy triggers the
-platform rebuilds; Monitor then *verifies the deploy actually came up healthy*,
-turning "deploy" into "deploy **and** prove it works". The health gate is what
-makes Deploy → Monitor a real feedback loop rather than fire-and-forget.
+The Deploy → Monitor pair is the heart of the CD story: deploying isn't
+"done" until the live `/api/health` check passes.
 
-**Parameters** (set per build, default to a normal CI+CD run):
-- `RUN_DEPLOY` (default `true`) — when off, the pipeline is a pure CI run
-  (Checkout → Build) and Deploy/Monitor are skipped. Useful for PR validation.
-- `RUN_SEED` (default `false`) — re-seed the demo graph before monitoring.
-
-**Monitor stage detail** — bounded retry loop (≈6 min, 36 × 10 s) because
-Render's free tier rebuilds and cold-starts:
-
-```sh
-for i in $(seq 1 36); do
-  body=$(curl -fsS --max-time 20 "$HEALTH_URL" || echo "")
-  if echo "$body" | jq -e '.ok == true and .db == true' >/dev/null 2>&1; then
-    exit 0           # healthy → stage (and pipeline) green
-  fi
-  sleep 10
-done
-exit 1               # never recovered → build fails
-```
+**Evidence capture (built into every stage):** each stage tees its output to
+`/evidence/build-<N>/<stage>.log` and writes a `PASS` marker on success; the
+Monitor stage saves the final health JSON. In `post { always }` the pipeline
+runs `infra/evidence/manifest.js` to write a `manifest.json` summarising the run
+(per-stage status, result, commit, health) and also archives the raw evidence as
+downloadable Jenkins artifacts. See §3a for how it's displayed.
 
 ---
 
-## 3. Infrastructure as code (criterion 3 — reproducible)
+## 3. Infrastructure as code (reproducible)
 
-Three artifacts mean the **CI server, the backend infra, and the demo data** can
-all be recreated from source:
+| Artifact | Purpose |
+|----------|---------|
+| `infra/jenkins/Dockerfile` + `docker-compose.yml` | the **CI server** — Jenkins LTS + Node 20 + jq + Docker CLI; `docker compose up -d --build` provisions it in one command |
+| `infra/app/docker-compose.yml` | the **app stack** — Neo4j + backend + frontend, deployed by the pipeline |
+| `backend/Dockerfile`, `frontend/Dockerfile` + `nginx.conf` | reproducible images for the two app services |
+| `backend/scripts/seed.js` | idempotent demo-graph seed (wired as the optional Seed stage) |
 
-### a) Jenkins controller — `infra/jenkins/`
-- **`Dockerfile`** — `FROM jenkins/jenkins:lts`, adds Node 20 (NodeSource),
-  `jq`, `curl`, and pre-installs the required plugins (`workflow-aggregator`,
-  `git`, `credentials-binding`, `timestamper`). No manual plugin clicking.
-- **`docker-compose.yml`** — one `jenkins` service, ports `8080`/`50000`,
-  persistent `jenkins_home` volume. **One command provisions the whole CI server:**
-  ```sh
-  cd infra/jenkins && docker compose up -d --build
-  ```
-  `docker compose down -v && docker compose up -d --build` proves a
-  from-scratch rebuild.
+`docker compose down -v && docker compose up -d --build` rebuilds either stack
+from scratch — nothing is configured by hand.
 
-### b) Backend service — `render.yaml`
-Render **Blueprint** at the repo root: declares the `iris-backend` web service
-(runtime, build/start commands, health-check path, free plan, region) and the
-required env-var **keys** (`sync: false` → values entered once in the dashboard,
-never committed). Connecting the repo as a Blueprint recreates the service
-declaratively. `autoDeploy: false` because deploys are owned by the Jenkins
-Deploy stage.
+### 3a. Evidence dashboard (standalone)
 
-### c) Demo data — `backend/scripts/seed.js`
-Idempotent graph seed (users, follows, posts, likes, interests) wired into the
-pipeline as the optional **Seed** stage so the demo graph is reproducible too.
-(Neo4j Aura itself is a managed service — not free-tier IaC-able — so the
-*data* is the reproducible part.)
+`infra/dashboard/` is a zero-dependency Node server that runs **alongside
+Jenkins** (same compose, port **4000**) and mounts the shared `evidence` volume
+**read-only**. It renders:
+- **`/`** — a build-history table: build #, result, a row of per-stage status
+  squares (green=passed, red=failed, grey=skipped), commit, start time
+  (auto-refreshes every 8s so new builds appear during the demo).
+- **`/build/<N>`** — per-build detail: each stage with its status and a
+  collapsible log, plus the health-gate result.
+
+Data flow: the pipeline writes `/evidence/build-<N>/` → the dashboard reads the
+same volume → no coupling to Jenkins internals, no app involvement. It's the
+single screen to show an examiner that every stage ran and passed.
 
 ---
 
 ## 4. One-time setup
 
-> Prereqs: Docker Desktop running; the app already deployed once to Render +
-> Vercel + Aura (see deploy targets below); repo pushed to GitHub.
+> Prereq: Docker Desktop running. Everything else is in this repo.
 
-**1. Bring up Jenkins**
+**1. Provision Jenkins + the evidence dashboard**
 ```sh
 cd infra/jenkins
 docker compose up -d --build
 docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
-Open <http://localhost:8080>, unlock with that password, create the admin user.
-(Required plugins are pre-baked, so you can "Select plugins to install → none".)
+This starts **two** containers: Jenkins (<http://localhost:8080>) and the
+evidence dashboard (<http://localhost:4000>). Unlock Jenkins with that password,
+create the admin user. On the plugins screen choose **Select plugins to install
+→ None** (required plugins are pre-baked).
 
-**2. Create the Deploy Hooks (you do this in the dashboards)**
-- **Render**: service → *Settings → Deploy Hook* → copy the URL.
-- **Vercel**: project → *Settings → Git → Deploy Hooks* → create one for `main`,
-  copy the URL.
+**2. (Optional) Firebase for working login** — copy `infra/app/.env.example` to
+`infra/app/.env` and fill in the public Firebase web values. The pipeline and
+the health gate work **without** this; only login needs it.
 
-**3. Add Jenkins credentials** — *Manage Jenkins → Credentials → (global) → Add*,
-type **Secret text**:
-
-| Credential ID | Value | Used by |
-|---|---|---|
-| `render-deploy-hook` | Render deploy hook URL | Deploy stage |
-| `vercel-deploy-hook` | Vercel deploy hook URL | Deploy stage |
-| `neo4j-uri` | `neo4j+s://…` | Seed stage (optional) |
-| `neo4j-user` | Aura username (= instance id) | Seed stage (optional) |
-| `neo4j-password` | Aura password | Seed stage (optional) |
-| `neo4j-database` | Aura database (= instance id) | Seed stage (optional) |
-
-**4. Create the pipeline job**
-- *New Item → Pipeline* (e.g. `iris`).
+**3. Create the pipeline job**
+- *New Item → Pipeline* (e.g. `iris-local`).
 - *Pipeline → Definition*: **Pipeline script from SCM**, SCM **Git**,
-  repo URL, branch `main`, **Script Path** `Jenkinsfile`.
-- *Build Triggers*: enable **GitHub hook trigger for GITScm polling**
-  (or **Poll SCM** `H/5 * * * *` if no public webhook) → CI on every push.
+  Repo URL `https://github.com/Prajwalkiran1/Iris-Social-Networking-Website.git`,
+  **Branch** `*/jenkins-demo`, **Script Path** `Jenkinsfile`.
+- *Build Triggers*: **Poll SCM** `H/5 * * * *` (or just use **Build Now**).
 
 ---
 
-## 5. Running it / demonstration walkthrough (criterion 4)
+## 5. Running it / demonstration walkthrough
 
-1. **CI-only proof** — *Build with Parameters*, set `RUN_DEPLOY = false`, Build.
-   → Checkout, Install, Test, Build all green; Deploy/Monitor skipped. Shows the
-   integration pipeline passing with no manual steps.
-2. **Full CI/CD** — *Build with Parameters* with defaults (`RUN_DEPLOY = true`).
-   → Deploy stage logs `Render deploy queued` / `Vercel deploy queued`; the
-   Render and Vercel dashboards show a new deploy starting; Monitor polls
-   `/api/health` and goes green on `"db":true`.
-3. **Trigger-on-push** — push a commit to `main`; the webhook/poll starts a build
-   automatically (minimal manual intervention — criterion 2).
-4. **Evidence** — capture **Build → Console Output** and the Stage View, plus the
-   Render/Vercel dashboards and the live site, into `docs/devops/`.
+1. **CI-only proof** — *Build with Parameters*, `RUN_DEPLOY = false` → Checkout,
+   Install, Test, Build green; Deploy/Monitor skipped.
+2. **Full CI/CD** — *Build with Parameters* with defaults → Deploy logs the
+   stack coming up; Monitor polls `/api/health` and goes green on `"db":true`.
+   Open <http://localhost:8081> — the app is live.
+3. *(Optional)* re-run with `RUN_SEED = true` to populate the demo graph, then
+   show the feed / recommendations.
+4. **Trigger-on-push** — push to `jenkins-demo`; the poll starts a build
+   automatically (minimal manual intervention).
+5. **Evidence** — open the **dashboard at <http://localhost:4000>** to show the
+   build history and per-stage logs; also save screenshots/console output into
+   `docs/devops/`.
 
-**Live targets**
-- Backend: <https://iris-social-networking-website.onrender.com> (`/api/health`)
-- Frontend: <https://iris-social.vercel.app>
+**Local URLs:** app <http://localhost:8081> · **evidence dashboard
+<http://localhost:4000>** · backend health <http://localhost:5001/api/health> ·
+Neo4j browser <http://localhost:7474> (`neo4j` / `password123`).
 
 ---
 
-## 6. Challenges encountered (real, for the viva)
+## 6. Challenges encountered (for the viva)
 
-- **Windows → Linux Jenkins.** The original `Jenkinsfile` used `bat` steps and a
-  `NodeJS-20` tool from a Windows agent. Moving Jenkins into a Linux Docker
-  container meant rewriting every step to `sh` and baking Node into the image
-  instead of relying on a hand-configured tool.
-- **Node in Jenkins without Docker-in-Docker.** Chose a custom controller image
-  (Jenkins LTS + NodeSource Node 20) over a `docker { image 'node' }` agent to
-  avoid mounting the Docker socket — simpler and still fully reproducible.
-- **Deploy ≠ healthy.** A deploy hook returns `200` immediately, long before the
-  service is actually up. The Monitor stage closes that gap by gating on the
-  real `/api/health` DB check, which also absorbs Render free-tier cold starts.
-- **Secret hygiene.** Deploy hooks and Aura creds are Jenkins secret-text, and
-  `render.yaml` only declares env-var *keys* (`sync: false`) — nothing sensitive
-  is committed.
-- **Aura naming gotcha.** On Neo4j Aura Free the username **and** database name
-  are the instance id (e.g. `fcda65b6`), not `neo4j` — reflected in the seed
-  credentials.
+- **Windows → Linux Jenkins.** The original pipeline used `bat` steps + a Windows
+  `NodeJS` tool. Moving Jenkins into a Linux container meant rewriting to `sh`
+  and baking Node into the controller image.
+- **Persistent local deploy.** Processes started inside a Jenkins stage are
+  reaped when the stage ends, so "deploy" had to mean **containers** (which
+  outlive the build), not background `npm start`. Hence the Docker app stack.
+- **Jenkins driving Docker.** Solved with Docker-outside-of-Docker: the Docker
+  CLI in the controller image talks to the host daemon via the mounted socket,
+  so app containers run as host siblings with published ports.
+- **Container-to-host networking.** The Monitor stage (inside Jenkins) reaches
+  the app's published port via `host.docker.internal`, not `localhost`.
+- **Deploy ≠ healthy.** `compose up` returns before Neo4j accepts connections,
+  so the Monitor stage gates on the real `/api/health` DB check with retries.
+- **Same-origin API.** nginx serves the SPA and proxies `/api` to the backend,
+  so the bundle needs no `VITE_API_BASE_URL` and there's no CORS to manage.
 
 ---
 
 ## 7. Outcomes
 
-- A single Jenkins pipeline covers **Build → Test → Deploy → Monitor**, logically
-  gated and integrated, triggered automatically on push.
-- Backend infra (`render.yaml`), the CI server (`infra/jenkins/`), and demo data
-  (seed stage) are all reproducible from source.
-- Deploys are verified live by an automated health gate, not assumed.
+- One Jenkins pipeline runs **Build → Test → Deploy → Monitor**, logically gated
+  and verified by a live health check, triggered automatically on push.
+- The CI server, the app stack, and the demo data are all reproducible from code.
+- The whole thing runs offline on one laptop — ideal for a controlled demo.
 
-## File map
+## File map (jenkins-demo branch)
 
 | Path | Purpose |
-|---|---|
-| `Jenkinsfile` | the 4-stage (+seed) declarative pipeline |
-| `infra/jenkins/Dockerfile` | reproducible Jenkins controller (Node 20 + jq + plugins) |
-| `infra/jenkins/docker-compose.yml` | one-command Jenkins provisioning |
-| `render.yaml` | Render Blueprint for the backend (IaC) |
-| `backend/scripts/seed.js` | idempotent demo-graph seed (Seed stage) |
-| `docs/devops/` | screenshots + logs (demonstration evidence) |
+|------|---------|
+| `Jenkinsfile` | 4-stage (+seed) local pipeline, with per-stage evidence capture |
+| `infra/jenkins/` | reproducible Jenkins controller (Node + Docker CLI) + dashboard service |
+| `infra/app/docker-compose.yml` | the deployed app stack |
+| `infra/dashboard/` | standalone evidence dashboard (zero-dep Node server, port 4000) |
+| `infra/evidence/manifest.js` | builds each run's `manifest.json` from stage logs/statuses |
+| `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf` | app images |
+| `backend/scripts/seed.js` | demo-graph seed (Seed stage) |
+| `docs/devops/` | screenshots + logs (evidence) |

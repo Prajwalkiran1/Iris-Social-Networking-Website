@@ -1,0 +1,58 @@
+# Local application stack deployed by the Jenkins "Deploy" stage.
+# Brings up the full app on your machine: Neo4j + backend API + nginx-served
+# frontend. Jenkins runs `docker compose -f infra/app/docker-compose.yml up -d
+# --build`; the Monitor stage then polls the backend health endpoint.
+#
+# Standalone use (without Jenkins):
+#   docker compose -f infra/app/docker-compose.yml up -d --build
+#   open http://localhost:8081
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: iris-app-neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+    ports:
+      - "7474:7474"   # Neo4j Browser
+      - "7687:7687"   # Bolt
+    volumes:
+      - neo4j_data:/data
+
+  backend:
+    build:
+      context: ../../backend
+    container_name: iris-app-backend
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password123
+      NEO4J_DATABASE: neo4j
+      # Firebase project id is enough for ID-token verification (no secret).
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-iris-social-3c4bd}
+      FRONTEND_ORIGIN: http://localhost:8081
+      PORT: "5001"
+    ports:
+      - "5001:5001"
+    depends_on:
+      - neo4j
+
+  frontend:
+    build:
+      context: ../../frontend
+      args:
+        # Public Firebase web config — supply via infra/app/.env for real auth.
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+        VITE_FIREBASE_MEASUREMENT_ID: ${VITE_FIREBASE_MEASUREMENT_ID:-}
+    container_name: iris-app-frontend
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  neo4j_data:

@@ -1,22 +1,47 @@
-# One-command, reproducible Jenkins controller for the Iris pipeline.
+# One-command, reproducible CI side of the Iris local demo:
+#   - jenkins:   the pipeline controller
+#   - dashboard: the standalone CI/CD evidence dashboard (http://localhost:4000)
+# Both share the `evidence` volume: Jenkins writes per-build logs/manifests,
+# the dashboard reads and renders them.
 #
 #   cd infra/jenkins
 #   docker compose up -d --build
-#   # open http://localhost:8080 and unlock with:
 #   docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 #
-# `docker compose down -v` wipes the volume for a clean-from-scratch rebuild.
+# `docker compose down -v` wipes volumes for a clean-from-scratch rebuild.
 services:
   jenkins:
     build: .
     image: iris-jenkins:lts-node20
     container_name: iris-jenkins
     restart: unless-stopped
+    # Run as root so the container can use the bind-mounted Docker socket.
+    # Acceptable for a local demo controller; not for a shared/production one.
+    user: root
     ports:
       - "8080:8080"     # Jenkins web UI
       - "50000:50000"   # inbound agent port
     volumes:
       - jenkins_home:/var/jenkins_home
+      # Docker-outside-of-Docker: the Deploy stage runs `docker compose` against
+      # the host daemon, so the app containers come up as siblings on the host
+      # (ports published on localhost, reachable via host.docker.internal).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Shared evidence: the pipeline writes /evidence/build-<N>/ here.
+      - evidence:/evidence
+
+  dashboard:
+    build: ../dashboard
+    image: iris-evidence-dashboard:1
+    container_name: iris-evidence-dashboard
+    restart: unless-stopped
+    ports:
+      - "4000:4000"     # evidence dashboard UI
+    volumes:
+      - evidence:/evidence:ro
+    depends_on:
+      - jenkins
 
 volumes:
   jenkins_home:
+  evidence:
