@@ -4,6 +4,7 @@ import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiPost } from "../services/apiClient";
+import useIsMobile from "../hooks/useIsMobile";
 import {
   colors,
   font,
@@ -26,6 +27,7 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const isMobile = useIsMobile();
 
   React.useEffect(() => {
     if (currentUser) navigate("/home");
@@ -73,19 +75,23 @@ const Signup = () => {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.leftPanel}>
-        <div style={styles.branding}>
-          <h1 style={styles.logo}>Iris</h1>
+    <div style={styles.container(isMobile)}>
+      <div style={styles.leftPanel(isMobile)}>
+        <div style={styles.branding(isMobile)}>
+          <h1 style={styles.logo(isMobile)}>Iris</h1>
           <p style={styles.tagline}>connect through shared interests</p>
-          <div style={styles.divider} />
-          <p style={styles.quote}>
-            "Where meaningful connections begin with common passions"
-          </p>
+          {!isMobile && (
+            <>
+              <div style={styles.divider} />
+              <p style={styles.quote}>
+                "Where meaningful connections begin with common passions"
+              </p>
+            </>
+          )}
         </div>
       </div>
 
-      <div style={styles.rightPanel}>
+      <div style={styles.rightPanel(isMobile)}>
         <div style={styles.formCard}>
           <h2 style={styles.title}>Join Iris</h2>
           <p style={styles.subtitle}>Create your account to get started</p>
@@ -157,38 +163,41 @@ const Signup = () => {
 };
 
 const styles = {
-  container: {
+  container: (mobile) => ({
     minHeight: "100vh",
     display: "flex",
+    flexDirection: mobile ? "column" : "row",
     background: colors.bg,
     fontFamily: font.family,
-  },
-  leftPanel: {
-    flex: "1 1 55%",
+  }),
+  leftPanel: (mobile) => ({
+    flex: mobile ? "0 0 auto" : "1 1 55%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
     background: gradients.brandSoft,
     overflow: "hidden",
-  },
-  branding: {
-    padding: spacing["3xl"],
+    paddingTop: mobile ? spacing.xl : 0,
+    paddingBottom: mobile ? spacing.lg : 0,
+  }),
+  branding: (mobile) => ({
+    padding: mobile ? spacing.lg : spacing["3xl"],
     textAlign: "center",
     position: "relative",
     zIndex: 1,
-  },
-  logo: {
-    fontSize: "104px",
+  }),
+  logo: (mobile) => ({
+    fontSize: mobile ? "56px" : "104px",
     fontWeight: 800,
     letterSpacing: "-0.04em",
     lineHeight: 1,
-    marginBottom: spacing.xl,
+    marginBottom: mobile ? spacing.sm : spacing.xl,
     background: gradients.brand,
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
     backgroundClip: "text",
-  },
+  }),
   tagline: {
     ...type.caption,
     color: colors.textFaint,
@@ -211,14 +220,14 @@ const styles = {
     maxWidth: "360px",
     margin: "0 auto",
   },
-  rightPanel: {
-    flex: "1 1 45%",
+  rightPanel: (mobile) => ({
+    flex: mobile ? "1 1 auto" : "1 1 45%",
     display: "flex",
-    alignItems: "center",
+    alignItems: mobile ? "flex-start" : "center",
     justifyContent: "center",
-    padding: spacing.xl,
+    padding: mobile ? spacing.lg : spacing.xl,
     background: "transparent",
-  },
+  }),
   formCard: {
     ...glassCard({ strong: true, padded: false }),
     padding: `${spacing["2xl"]} ${spacing["2xl"]}`,

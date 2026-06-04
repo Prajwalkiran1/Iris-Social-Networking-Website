@@ -10,6 +10,7 @@ import { apiGet } from "../services/apiClient";
 import { useAuth } from "../contexts/AuthContext";
 import FollowButton from "../components/FollowButton";
 import Avatar from "../components/Avatar";
+import useIsMobile from "../hooks/useIsMobile";
 import {
   colors,
   spacing,
@@ -35,6 +36,7 @@ const Search = () => {
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const { currentUser } = useAuth();
   const menuRef = useRef(null);
+  const isNarrow = useIsMobile(600);
 
   useEffect(() => {
     if (searchTerm.trim()) {
@@ -91,8 +93,8 @@ const Search = () => {
           </p>
         </header>
 
-        <div style={styles.searchControls}>
-          <div style={styles.searchField}>
+        <div style={styles.searchControls(isNarrow)}>
+          <div style={styles.searchField(isNarrow)}>
             <SearchIcon
               size={18}
               color={colors.textFaint}
@@ -262,17 +264,19 @@ const styles = {
   header: {
     marginBottom: spacing.xl,
   },
-  searchControls: {
+  searchControls: (narrow) => ({
     display: "flex",
+    flexDirection: narrow ? "column" : "row",
     gap: spacing.md,
     marginBottom: spacing.xl,
     flexWrap: "wrap",
-  },
-  searchField: {
+  }),
+  searchField: (narrow) => ({
     position: "relative",
     flex: 1,
-    minWidth: "240px",
-  },
+    minWidth: narrow ? 0 : "240px",
+    width: narrow ? "100%" : undefined,
+  }),
   searchIcon: {
     position: "absolute",
     left: spacing.md,

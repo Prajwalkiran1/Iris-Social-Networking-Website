@@ -522,7 +522,9 @@ const styles = {
   },
   interestsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+    // auto-fit + 110px minimum lets the pills land 2-per-row on phones
+    // (below ~240px content width) and 3-4 per row on tablets and up.
+    gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
     gap: spacing.sm,
   },
   interestPill: {

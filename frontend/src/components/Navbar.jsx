@@ -10,6 +10,7 @@ import {
 } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGet } from "../services/apiClient";
+import useIsMobile from "../hooks/useIsMobile";
 import {
   colors,
   spacing,
@@ -56,23 +57,6 @@ const useUnreadTotal = (currentUser, path) => {
     // immediate refresh (and the badge clears quickly when the user reads).
   }, [currentUser, path]);
   return total;
-};
-
-// Tiny matchMedia hook so we can swap to a bottom tab bar under 768px.
-const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(max-width: 768px)").matches
-  );
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 768px)");
-    const handler = (e) => setIsMobile(e.matches);
-    mq.addEventListener?.("change", handler);
-    return () => mq.removeEventListener?.("change", handler);
-  }, []);
-  return isMobile;
 };
 
 const ITEMS = [
