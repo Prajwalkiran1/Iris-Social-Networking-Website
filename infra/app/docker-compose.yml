@@ -40,14 +40,18 @@ services:
     build:
       context: ../../frontend
       args:
-        # Public Firebase web config — supply via infra/app/.env for real auth.
-        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
-        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
-        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
-        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
-        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
-        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
-        VITE_FIREBASE_MEASUREMENT_ID: ${VITE_FIREBASE_MEASUREMENT_ID:-}
+        # Firebase WEB config — public client identifiers (the same values ship
+        # in the live Vercel bundle; Firebase is designed for them to be
+        # client-visible, with security enforced by Auth rules + authorized
+        # domains). Baked as defaults so the pipeline builds a working app from
+        # a clean checkout; an infra/app/.env still overrides them if present.
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-AIzaSyBZlUSVrVHzgDh9cAxZeM0UeGMpGTVlhvQ}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-iris-social-3c4bd.firebaseapp.com}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-iris-social-3c4bd}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-iris-social-3c4bd.firebasestorage.app}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-974017489478}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-1:974017489478:web:34fa3e69e0cdfeddb73847}
+        VITE_FIREBASE_MEASUREMENT_ID: ${VITE_FIREBASE_MEASUREMENT_ID:-G-NL9BV55EV4}
     container_name: iris-app-frontend
     ports:
       - "8081:80"
