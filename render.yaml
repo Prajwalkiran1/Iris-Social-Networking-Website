@@ -1,0 +1,30 @@
+# Render Blueprint (Infrastructure as Code) for the Iris backend.
+# Recreates the backend web service from source: connect this repo as a
+# Blueprint in the Render dashboard (New > Blueprint) and Render provisions the
+# service from this file. Secret values are NOT committed — keys marked
+# `sync: false` are filled in once via the dashboard / Blueprint prompt.
+services:
+  - type: web
+    name: iris-backend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: false   # deploys are orchestrated by the Jenkins Deploy stage (deploy hook)
+    envVars:
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: NEO4J_DATABASE
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      # PORT is injected by Render automatically; server.js reads process.env.PORT.
