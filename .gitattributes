@@ -1,0 +1,30 @@
+# Keep LF line endings on everything that runs inside the Linux containers,
+# regardless of the host OS. Without this, cloning on Windows can introduce
+# CRLF, which breaks the inline `#!/bin/bash` scripts in the Jenkinsfile
+# ("bad interpreter") and shebang lines in shell/Docker files.
+* text=auto eol=lf
+
+# Be explicit for the files that matter most to the pipeline/app.
+Jenkinsfile      text eol=lf
+*.sh             text eol=lf
+*.js             text eol=lf
+*.yml            text eol=lf
+*.yaml           text eol=lf
+*.json           text eol=lf
+*.conf           text eol=lf
+Dockerfile       text eol=lf
+.dockerignore    text eol=lf
+.env.example     text eol=lf
+
+# Genuinely Windows-native scripts (if ever added) keep CRLF.
+*.bat            text eol=crlf
+*.cmd            text eol=crlf
+*.ps1            text eol=crlf
+
+# Binary assets — never touch line endings.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.svg  text
+*.ico  binary

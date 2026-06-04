@@ -106,6 +106,14 @@ single screen to show an examiner that every stage ran and passed.
 ## 4. One-time setup
 
 > Prereq: Docker Desktop running. Everything else is in this repo.
+>
+> **Cross-platform (macOS / Windows / Linux):** all build/test/deploy steps run
+> *inside Linux containers*, so the host OS doesn't matter. On **Windows**, use
+> Docker Desktop with the **WSL2 backend in Linux-container mode** (the default);
+> `host.docker.internal` and the `/var/run/docker.sock` mount both work there.
+> A `.gitattributes` forces LF line endings so the pipeline's shell scripts work
+> regardless of where the repo was cloned. Run host commands in **PowerShell**
+> (replace `&&` with `;` if you're on the older Windows PowerShell 5).
 
 **1. Provision Jenkins + the evidence dashboard**
 ```sh
