@@ -49,7 +49,7 @@ const Login = () => {
     <div style={styles.container(isMobile)}>
       <div style={styles.leftPanel(isMobile)}>
         <div style={styles.branding(isMobile)}>
-          <h1 style={styles.logo(isMobile)}>Iris</h1>
+          <h1 style={styles.logo(isMobile)}> Truth Social</h1>
           <p style={styles.tagline}>connect through shared interests</p>
           {!isMobile && (
             <>
